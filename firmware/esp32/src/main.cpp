@@ -1,215 +1,143 @@
+/**
+ * SmartPark-IoT V2 firmware entry point (ESP32 Arduino glue) — M1A.
+ *
+ * This file contains ONLY hardware wiring and scheduling. All business logic
+ * (filtering, passage, occupancy, barrier FSM, display formatting, events)
+ * lives in lib/smartpark_core and is unit-tested on the host (pio test -e
+ * native). Behavior changes vs V1 are listed in firmware/esp32/README.md.
+ *
+ * Safety posture at boot (documented, intended):
+ *  - occupancy is UNKNOWN (no persistence yet, NFR-004) => admission is
+ *    deferred and the gate stays CLOSED until an explicit reconciliation;
+ *  - the gate path must be CLEAR when power is applied (no obstruction
+ *    sensor in M1A — docs/hardware/pinmap-v2.md §9/§10);
+ *  - loop() contains no delay(): every periodic action is millis()-scheduled.
+ */
 #include <Arduino.h>
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
 #include <ESP32Servo.h>
+#include <LiquidCrystal_I2C.h>
+#include <Wire.h>
 
-/**
- * SYS-EMBRQ: SMART PARKING 
- */
+#include "display_manager.hpp"
+#include "parking_controller.hpp"
+#include "pins.hpp"
+#include "sensor_reader.hpp"
 
-LiquidCrystal_I2C lcd(0x27, 16, 2);
+using namespace smartpark;
 
-Servo entreeServo;
-#define PIN_SERVO 13 
+static LiquidCrystal_I2C lcd(pins::LCD_ADDR, 16, 2);
+static Servo gateServo; // ESP32Servo exports the classic `Servo` class name
+static SensorReader reader;
+static ParkingController ctrl;
 
-#define LED_VERT  26 
-#define LED_ROUGE 27 
-#define LED_A     25 // Occupation Zone A
-#define LED_B     33 // Occupation Zone B
+static uint32_t lastSlotMs = 0;
+static uint32_t lastLcdMs = 0;
+static uint8_t appliedAngle = 0xFF; // forces the first servo write
 
-#define PIN_TRIG  3  
-
-struct Ultra { 
-  int echo; 
-  const char* nom; 
-};
-
-//ECHO de ultras
-Ultra capteurs[4] = {
-  {15, "Entree"}, 
-  {2,  "ZoneA "}, 
-  {4,  "ZoneB "}, 
-  {5,  "Sortie"} 
-};
-
-const int CAPACITE         = 6;   
-const int SEUIL_VOITURE    = 15;   // Distance de détection dune voiture 
-const int SEUIL_ZONE_LIBRE = 30;   // Distance pour considerer une place libre 
-const unsigned long DEBOUNCE_MS  = 2500; // Temps datt entre deux détections b millisec
-const unsigned long LCD_INTERVAL = 500;  // Intervalle de mise à jour de lecran b millisec
-
-// ================= VARIABLES DE GESTION =================
-int voitures = 0;
-unsigned long derniere_entree = 0;
-unsigned long derniere_sortie = 0;
-unsigned long dernierLCD      = 0;
-
-/**
- * Fonction pour lire la distance d'un capteur spécifique
- * @param echoPin Le pin ECHO du capteur à lire
- * @return La distance mesurée en centimètres
- */
-long lireDistance(int echoPin) {
-  // Génération de l'impulsion TRIG (commune à tous)
-  digitalWrite(PIN_TRIG, LOW);
-  delayMicroseconds(4);
-  digitalWrite(PIN_TRIG, HIGH);
-  delayMicroseconds(10);
-  digitalWrite(PIN_TRIG, LOW);
-
-  // Mesure du temps de retour de l'écho sur le pin spécifique
-  // Timeout de 30ms pour ne pas bloquer le programme si rien n'est détecté
-  long duree = pulseIn(echoPin, HIGH, 30000);
-  
-  if (duree == 0) return 999; // Pas d'obstacle détecté
-  return duree * 0.034 / 2;   // Conversion temps -> distance (vitesse du son)
+static bool zoneLedLevel(SensorState s, bool blink) {
+  if (s == SensorState::VALID_OCCUPIED) return true;
+  if (s == SensorState::VALID_FREE) return false;
+  return blink; // INIT / UNKNOWN / FAULT blink: "do not trust this zone"
 }
 
-/**
- * Fonction pour ouvrir la barrière de manière fluide
- * 
- */
-void ouvrirBarriere() {
-  Serial.println("Action : Ouverture Barrière...");
-  for (int pos = 0; pos <= 90; pos += 2) { // Mouvement progressif
-    entreeServo.write(pos);
-    delay(15);
-  }
+static void applyLeds(const ControllerView& v, uint32_t nowMs) {
+  // Admission lamps: green = known free space, red = known full, both OFF =
+  // occupancy unknown (never advertise availability we cannot prove).
+  const bool known = v.occStatus == OccupancyStatus::KNOWN;
+  digitalWrite(pins::LED_GREEN, (known && v.freeSpaces > 0) ? HIGH : LOW);
+  digitalWrite(pins::LED_RED, (known && v.freeSpaces == 0) ? HIGH : LOW);
+
+  const bool blink = ((nowMs / LED_BLINK_MS) & 1UL) != 0UL;
+  digitalWrite(pins::LED_ZONE_A, zoneLedLevel(v.zone[0], blink) ? HIGH : LOW);
+  digitalWrite(pins::LED_ZONE_B, zoneLedLevel(v.zone[1], blink) ? HIGH : LOW);
 }
 
-/**
- * Fonction pour fermer la barrière de manière fluide
- */
-void fermerBarriere() {
-  Serial.println("Action : Fermeture Barrière...");
-  for (int pos = 90; pos >= 0; pos -= 2) {
-    entreeServo.write(pos);
-    delay(15);
-  }
-}
-
-/**
- * Mise à jour intelligente de l'affichage LCD
- */
-void mettreAJourLCD(int places, long dA, long dB) {
+static void refreshLcd(const ControllerView& v, uint32_t nowMs) {
+  if (nowMs - lastLcdMs < LCD_INTERVAL_MS) return;
+  lastLcdMs = nowMs;
+  const DisplayLines lines = formatDisplay(v); // always exactly 16 chars
   lcd.setCursor(0, 0);
-  lcd.print("SMART PARKING   ");
-
+  lcd.print(lines.line1);
   lcd.setCursor(0, 1);
-  if (places <= 0) {
-    lcd.print("Free:0 PARK FULL");
-  } else {
-    String dir = "";
-    bool zoneA_libre = (dA > SEUIL_ZONE_LIBRE);
-    bool zoneB_libre = (dB > SEUIL_ZONE_LIBRE);
+  lcd.print(lines.line2);
+}
 
-    if (zoneA_libre && zoneB_libre) dir = "GO A or B ";
-    else if (zoneA_libre)           dir = "GO LEFT A ";
-    else if (zoneB_libre)           dir = "GO RIGHT B";
-    else                            dir = "WAIT      ";
-
-    // Construction de la ligne avec formatage propre
-    String ligne = "Free:" + String(places) + " " + dir;
-    while (ligne.length() < 16) ligne += " "; // Compléter avec des espaces
-    lcd.print(ligne);
+static void drainEvents() {
+  ParkEvent e;
+  while (ctrl.popEvent(e)) {
+    Serial.printf("[%lu] seq=%u %s", static_cast<unsigned long>(e.atMs),
+                  static_cast<unsigned>(e.seq), toString(e.type));
+    if (e.sensorId != EVENT_NO_SENSOR)
+      Serial.printf(" sensor=%u", e.sensorId);
+    Serial.printf(" value=%d\n", e.value);
   }
 }
 
-// ================= INITIALISATION =================
 void setup() {
-  // Note : On utilise Serial pour le debug (TX0), mais RX0 est pris par le TRIG
   Serial.begin(115200);
+  Serial.println();
+  Serial.println(F("SmartPark-IoT V2 (M1A) boot"));
+  Serial.println(F("occupancy=UNKNOWN until reconciled; gate stays CLOSED"));
 
-  // Configuration du TRIG commun
-  pinMode(PIN_TRIG, OUTPUT);
-  digitalWrite(PIN_TRIG, LOW);
+  reader.begin();
 
-  // Configuration des pins ECHO
-  for (int i = 0; i < 4; i++) {
-    pinMode(capteurs[i].echo, INPUT);
+  pinMode(pins::LED_GREEN, OUTPUT);
+  pinMode(pins::LED_RED, OUTPUT);
+  pinMode(pins::LED_ZONE_A, OUTPUT);
+  pinMode(pins::LED_ZONE_B, OUTPUT);
+  digitalWrite(pins::LED_GREEN, LOW);
+  digitalWrite(pins::LED_RED, LOW);
+  digitalWrite(pins::LED_ZONE_A, LOW);
+  digitalWrite(pins::LED_ZONE_B, LOW);
+
+  // Gate rests CLOSED at boot (V1-compatible resting position). Power on
+  // with the path clear: there is no obstruction sensor in M1A.
+  gateServo.setPeriodHertz(50);
+  gateServo.attach(pins::SERVO, 500, 2400);
+  gateServo.write(BARRIER_CLOSED_ANGLE);
+  appliedAngle = BARRIER_CLOSED_ANGLE;
+  if (!gateServo.attached()) {
+    ctrl.barrier().setActuatorFault();
+    Serial.println(F("E: servo attach failed -> barrier latched FAULT"));
   }
 
-  // Configuration des LEDs
-  pinMode(LED_VERT,  OUTPUT);
-  pinMode(LED_ROUGE, OUTPUT);
-  pinMode(LED_A,     OUTPUT);
-  pinMode(LED_B,     OUTPUT);
-
-  // Configuration du Servo
-  ESP32PWM::allocateTimer(0);
-  entreeServo.setPeriodHertz(50);
-  entreeServo.attach(PIN_SERVO, 500, 2400);
-  entreeServo.write(0); // Position fermée par défaut
-
-  // Initialisation de l'écran LCD
-  lcd.init();
+  lcd.init(); // library-internal init timings only; no app splash delay
   lcd.backlight();
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("SYSTEM STARTING");
-  delay(2000);
-  lcd.clear();
+  lcd.print(F("SMARTPARK V2"));
+  lcd.setCursor(0, 1);
+  lcd.print(F("BOOT - NO COUNT"));
 
-  Serial.println("=== SYSTEME PRET ===");
+  lastSlotMs = millis();
 }
 
-// ================= BOUCLE PRINCIPALE =================
 void loop() {
-  unsigned long maintenant = millis();
-  long d[4];
+  const uint32_t nowMs = millis();
 
-  // 1. Lecture séquentielle des capteurs
-  for (int i = 0; i < 4; i++) {
-    d[i] = lireDistance(capteurs[i].echo);
-    delay(40); // Délai pour éviter les interférences entre échos
+  // 1. Sensor slot scheduler: one transducer per SENSOR_SLOT_MS window
+  //    (independent triggering — no two sensors fire together, F-01).
+  if (nowMs - lastSlotMs >= SENSOR_SLOT_MS) {
+    lastSlotMs = nowMs; // simple reschedule; catch-up bursts are pointless
+    const uint8_t idx = ParkingController::slotFor(nowMs);
+    const long cm = reader.measureCm(idx); // bounded: <= ECHO_TIMEOUT_US
+    ctrl.onSample(idx, cm, nowMs);
   }
 
-  // 2. Logique d'ENTRÉE (Incrémente le compteur)
-  // Utilisation d'un "Debounce" pour éviter les doubles comptages
-  if (d[0] < SEUIL_VOITURE && (maintenant - derniere_entree > DEBOUNCE_MS)) {
-    if (voitures < CAPACITE) {
-      voitures++;
-      derniere_entree = maintenant;
-      Serial.print("Entree detectee ! Voitures : "); Serial.println(voitures);
-      ouvrirBarriere();
-      delay(2000); // Temps pour laisser passer la voiture
-      fermerBarriere();
-    } else {
-      Serial.println("Parking Plein ! Entree refusee.");
-    }
+  // 2. Policy pass: passage lanes, barrier FSM, state-change events.
+  ctrl.tick(nowMs);
+
+  // 3. Actuator: apply the servo command only when it changed (the FSM
+  //    already quantizes sweeps to 2°/15 ms steps — no delay() needed).
+  const uint8_t target = ctrl.barrier().angle();
+  if (target != appliedAngle) {
+    gateServo.write(target);
+    appliedAngle = target;
   }
 
-  // 3. Logique de SORTIE (Décrémente le compteur)
-  if (d[3] < SEUIL_VOITURE && (maintenant - derniere_sortie > DEBOUNCE_MS)) {
-    if (voitures > 0) {
-      voitures--;
-      derniere_sortie = maintenant;
-      Serial.print("Sortie detectee ! Voitures : "); Serial.println(voitures);
-    }
-  }
-
-  // le compteur reste entre 0 et capacitz
-  voitures = constrain(voitures, 0, CAPACITE);
-  int places_libres = CAPACITE - voitures;
-
-  // 4. Gestion des LEDs de Zone
-  digitalWrite(LED_A, (d[1] < SEUIL_VOITURE) ? HIGH : LOW);
-  digitalWrite(LED_B, (d[2] < SEUIL_VOITURE) ? HIGH : LOW);
-
-  // 5. Gestion des LEDs d'état général
-  if (places_libres > 0) {
-    digitalWrite(LED_VERT, HIGH);
-    digitalWrite(LED_ROUGE, LOW);
-  } else {
-    digitalWrite(LED_VERT, LOW);
-    digitalWrite(LED_ROUGE, HIGH);
-  }
-
-  // 6. Mise à jour de l'affichage LCD 
-  if (maintenant - dernierLCD >= LCD_INTERVAL) {
-    dernierLCD = maintenant;
-    mettreAJourLCD(places_libres, d[1], d[2]);
-  }
-
-  delay(10); 
+  // 4. Indicators and display — interval-gated, never blocking.
+  const ControllerView v = ctrl.view(nowMs);
+  applyLeds(v, nowMs);
+  refreshLcd(v, nowMs);
+  drainEvents(); // serial event log (MQTT will consume this queue in M2)
 }

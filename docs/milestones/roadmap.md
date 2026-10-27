@@ -7,7 +7,7 @@ passes.** Effort figures are planning estimates for two part-time contributors.
 | # | Focus | Suggested effort | Exit gate | Status |
 |---|---|---|---|---|
 | **M0** | Fork, preserve V1, repository structure, docs & CI foundation | 2–4 days | Reproducible baseline + reviewed PR | ✅ see [m0.md](m0.md) |
-| **M1** | Safe & testable firmware: pin redesign, PlatformIO modules, filtering, passage confirmation, gate FSM, persistence | 2–3 weeks | Passage, sensor and barrier tests pass | ⬜ next |
+| **M1** | Safe & testable firmware: pin redesign, PlatformIO modules, filtering, passage confirmation, gate FSM, persistence | 2–3 weeks | Passage, sensor and barrier tests pass | 🟡 in progress — **M1A done** ([m1a.md](m1a.md)); M1B open (persistence, passage hardware path) |
 | **M2** | MQTT + offline queue, Wi-Fi lifecycle, event IDs, heartbeat | 1–2 weeks | Reconnect/replay without duplicate logical events | ⬜ |
 | **M3** | FastAPI backend + PostgreSQL, idempotent ingest, auth, API | 2 weeks | Migrations, ingest, auth, API tests green | ⬜ |
 | **M4** | SvelteKit operator dashboard | 2 weeks | Live, responsive, authenticated UI with tests | ⬜ |
@@ -22,16 +22,26 @@ passes.** Effort figures are planning estimates for two part-time contributors.
 
 1. Record the exact ESP32 board, wiring, and revise the pin map (fixes F-01,
    H-01, H-03 design constraints from the [V1 audit](../hardware/v1-audit.md)).
+   — **M1A: pin map specified in `pinmap-v2.md` (provisional, pre-power gate §10).**
 2. Electrical safety: level-shift 5 V ECHO (H-02), servo supply design (H-04),
-   verify LED resistors (H-06) — coordinate with M6 where physical work is needed.
+   verify LED resistors (H-06) — coordinate with M6 where physical work is
+   needed. — **M1A: specified in `pinmap-v2.md` + `bom.csv` (not built).**
 3. Restructure the PlatformIO firmware into modules; extract **pure logic**
    (sensor classification, hysteresis, state transitions, count bounds) so it
    can be unit-tested on the host (`native` env).
+   — **M1A: done (`lib/smartpark_core` + 41 native tests).**
 4. Independent per-sensor triggering + filtering (FR-001, FR-002).
+   — **M1A: done in code (staggered slots, hysteresis filter); hardware
+   cross-talk measurement remains M6.**
 5. Direction-aware passage confirmation hardware/logic (FR-003).
+   — **M1A: FSM implemented with ordered two-point contract; unreachable with
+   current hardware (documented). M1B: Wokwi + second-beam plan.**
 6. Non-blocking barrier FSM with obstruction response (FR-005).
+   — **M1A: done (guarded provisional close; obstruction hardware still M6).**
 7. Persistent occupancy + startup reconciliation (FR-007).
+   — ⬜ **M1B** (boot is `UNKNOWN` until then, by design).
 8. Unit, simulation and hardware tests with documented results.
+   — 🟡 **M1A: unit tests green; simulation = M1B (Wokwi); hardware = M6.**
 
 ## M2 — step plan (summary)
 

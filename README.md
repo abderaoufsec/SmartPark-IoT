@@ -43,16 +43,16 @@ Statuses reflect what is **in this repository right now**, not what is planned.
 
 | Feature | Status | Evidence / notes |
 |---|---|---|
-| Vehicle counting (entry/exit) | 🟡 V1 baseline code | `legacy/v1/` archive + `firmware/esp32/`; **not re-validated on hardware in this repo** |
-| Automatic barrier (SG90 servo) | 🟡 V1 baseline code | same — timed close is a [documented safety risk](docs/hardware/v1-audit.md) |
-| LCD guidance + status LEDs | 🟡 V1 baseline code | same — 17-character overflow bug [documented](docs/hardware/v1-audit.md) |
-| Zone A / Zone B occupancy LEDs | 🟡 V1 baseline code | same |
-| PlatformIO build + CI compile | ✅ Working (M0) | [`firmware-ci` workflow](.github/workflows/firmware-ci.yml) builds on every push/PR |
-| Direction-aware passage detection | ❌ Not implemented | V1 counts approach, not confirmed crossing (M1) |
-| Sensor cross-talk-safe triggering | ❌ Not implemented | V1 shares one TRIG across 4 sensors (M1) |
-| Persistent occupancy across reboot | ❌ Not implemented | counter resets (M1) |
-| Non-blocking, obstruction-aware gate FSM | ❌ Not implemented | V1 uses blocking `delay()` (M1) |
-| Unit / hardware test suite | ❌ Not started | planned from M1 (see [roadmap](docs/milestones/roadmap.md)) |
+| Vehicle counting (entry/exit) | 🟡 M1A: manual reconciliation only | approach **never** auto-counts — second passage beam absent by design ([m1a](docs/milestones/m1a.md)); no hardware re-validation |
+| Automatic barrier (SG90 servo) | 🟡 M1A FSM, provisional close | closing needs observed valid-FREE lane and aborts on `UNKNOWN`; **no obstruction sensor yet** ([pinmap §9](docs/hardware/pinmap-v2.md)) |
+| LCD guidance + status LEDs | 🟡 M1A logic (host-tested) | 17-char overflow fixed in `display_manager` (covered by the native suite); untested on hardware |
+| Zone A / Zone B occupancy LEDs | 🟡 M1A logic (host-tested) | unified hysteresis thresholds; blink = `UNKNOWN`/`FAULT` |
+| PlatformIO build + CI | ✅ Working | [`firmware-ci`](.github/workflows/firmware-ci.yml): compile + native tests + cppcheck (compile job green in M0; 3-job version runs on next push) |
+| Direction-aware passage detection | 🟡 M1A logic, hardware blocked | ordered two-point FSM implemented, unreachable until a second beam exists ([pinmap §11](docs/hardware/pinmap-v2.md)) |
+| Sensor cross-talk-safe triggering | 🟡 M1A code, not measured | independent TRIGs + 80 ms staggered slots; acoustic verification remains M6 |
+| Persistent occupancy across reboot | ❌ Not implemented | boots `UNKNOWN` and defers admission instead (safe interim); NVS = M1B |
+| Non-blocking, obstruction-aware gate FSM | 🟡 M1A logic | no `delay()` in `loop()`; guarded provisional close; obstruction sensing = M6 |
+| Unit test suite (host, no hardware) | ✅ Working (M1A) | 41 tests, `pio test -e native`, green locally & wired into CI |
 | Wi-Fi + MQTT + offline event queue | ⬜ Planned M2 | [roadmap](docs/milestones/roadmap.md) |
 | FastAPI + PostgreSQL backend | ⬜ Planned M3 | [roadmap](docs/milestones/roadmap.md) |
 | SvelteKit operator dashboard | ⬜ Planned M4 | [roadmap](docs/milestones/roadmap.md) |
@@ -158,7 +158,7 @@ SmartPark-IoT/
 ├── .github/
 │   ├── workflows/firmware-ci.yml ← PlatformIO compile on push/PR
 │   └── PULL_REQUEST_TEMPLATE.md
-├── firmware/esp32/               ← PlatformIO project (V1 logic, V2 baseline)
+├── firmware/esp32/               ← PlatformIO project (V2 modular firmware + native tests, M1A)
 │   ├── platformio.ini
 │   └── src/main.cpp
 ├── docs/

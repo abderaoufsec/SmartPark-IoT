@@ -1,5 +1,19 @@
-# Compiles the ESP32 firmware with PlatformIO on every push/PR that touches
-# firmware code or this workflow. Local parity: `cd firmware/esp32 && pio run`.
+# M1A firmware CI — three gates, all pinned (blueprint NFR-007):
+#   1. esp32-build    cross-compiles the ESP32 firmware (pio run)
+#   2. native-tests   host unit tests of lib/smartpark_core (pio test -e native)
+#                     compiles the core with -Wall -Wextra -Werror (warnings
+#                     are errors on the host, where we control every TU)
+#   3. static-checks  cppcheck through `pio check` (--fail-on-defect=medium)
+#
+# Toolchain pins: platformio==6.2.0 (=> espressif32@6.13.0, Unity 2.6.1 and
+# tool-cppcheck 1.21100.x resolved by that PlatformIO release), Python 3.12.
+# ubuntu-latest ships g++ for the native environment; no extra services or
+# containers are introduced. Local parity:
+#   pio run -d firmware/esp32
+#   pio test -d firmware/esp32 -e native
+#   pio check -d firmware/esp32 -e native --src-filters=+<lib/smartpark_core/*>+<src/*> \
+#     "--flags=--enable=warning,style,performance,portability --std=c++11 --suppress=missingIncludeSystem --inline-suppr" \
+#     --fail-on-defect=medium --skip-packages
 name: firmware-ci
 
 on:
@@ -22,8 +36,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: PlatformIO build (esp32dev)
+  esp32-build:
+    name: ESP32 firmware compile (esp32dev)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -58,3 +72,70 @@ jobs:
             firmware/esp32/.pio/build/esp32dev/firmware.bin
             firmware/esp32/.pio/build/esp32dev/firmware.elf
           if-no-files-found: error
+
+  native-tests:
+    name: Native unit tests (host g++)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python (pinned)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip and PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+          key: pio-${{ runner.os }}-py3.12-${{ hashFiles('firmware/esp32/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-py3.12-
+
+      - name: Install PlatformIO Core (pinned)
+        run: pip install platformio==6.2.0
+
+      - name: Show host compiler
+        run: g++ --version
+
+      - name: Run unit tests (-Wall -Wextra -Werror on the core)
+        run: pio test -d firmware/esp32 -e native
+
+  static-checks:
+    name: Static analysis (cppcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python (pinned)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip and PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+          key: pio-${{ runner.os }}-py3.12-${{ hashFiles('firmware/esp32/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-py3.12-
+
+      - name: Install PlatformIO Core (pinned)
+        run: pip install platformio==6.2.0
+
+      # Fails the job on HIGH/MEDIUM defects; LOW findings stay informational.
+      # Known LOW: sensor_filter.cpp knownConditionTrueFalse false positive —
+      # disproven by test_filter_reports_state_changes in test_core.
+      - name: Run cppcheck
+        run: >-
+          pio check -d firmware/esp32 -e native
+          "--src-filters=+<lib/smartpark_core/*>+<src/*>"
+          "--flags=--enable=warning,style,performance,portability --std=c++11 --suppress=missingIncludeSystem --inline-suppr"
+          --fail-on-defect=medium
+          --skip-packages

@@ -82,5 +82,40 @@ Findings are labeled `F-xx` (firmware logic), `H-xx` (hardware/electrical),
 
 ---
 
+## 6. Resolution status after M1A
+
+Findings are **never deleted** — this table records what M1A changed in
+software (logic proven by `pio test -e native`, compile proven by CI) versus
+what still needs hardware work. “Design” = specified in
+[pinmap-v2.md](pinmap-v2.md), **not yet built or measured**.
+
+| ID | M1A status | Where / evidence |
+|---|---|---|
+| F-01 | 🟢 fixed (logic) | per-sensor TRIG array + 80 ms staggered scheduler: `src/pins.hpp`, `src/sensor_reader.cpp`, `ParkingController::slotFor()`; cross-talk elimination still needs M6 measurement |
+| F-02 | 🟢 fixed (logic) — **counting deliberately disabled** | `passage_detector.hpp` + `test_single_beam_never_reaches_confirmed`, `test_entry_approach_opens_gate_but_never_counts`; needs second beam for FR-003 completion (pinmap §11) |
+| F-03 | 🟢 fixed (logic) | `sensor_filter.cpp` timeout → `UNKNOWN`, `FAULT` escalation; `test_timeout_is_unknown_never_free`, `test_fault_escalation_and_recovery` |
+| F-04 | 🟡 partially fixed — **provisional guarded close** | `barrier_controller.cpp` (sustained valid-FREE gate + mid-sweep abort); dedicated obstruction sensor still absent (H-08) → supervised desk model only |
+| F-05 | 🟢 fixed (logic) | `src/main.cpp` `millis()` scheduler, no `delay()` in `loop()`; bounded `pulseIn` ≤ 30 ms/slot documented in pinmap §4 |
+| F-06 | 🟡 mitigated, root cause open | boots `UNKNOWN` + admission defer (`occupancy_manager.hpp`, `test_occupancy_boots_unknown`); NVS persistence = M1B |
+| F-07 | 🟢 fixed (logic) | `display_manager.cpp` pad/truncate to 16; `test_display_lines_are_exactly_16_chars`, `test_display_priority_messages` |
+| F-08 | 🟢 fixed (logic), calibration open | unified hysteresis in `config.hpp`/`sensor_filter.cpp`; `test_fresh_classification_boundaries`, `test_hysteresis_*`, `test_noise_does_not_flip_state`; values provisional to M6 |
+| F-09 | 🟢 fixed (logic) | `ENTRY: FULL STOP` LCD message + one deduplicated `ADMISSION_DENIED`; `test_controller_denial_emitted_once`, `test_display_priority_messages` |
+| F-10 | 🟢 fixed (logic) | bounds rejection + `OCCUPANCY_CHANGE_REJECTED` event; `test_occupancy_reconcile_bounds`, `test_occupancy_change_bounds`, `test_reconcile_drives_events_and_view` |
+| F-11 | 🟢 fixed (design + code) | TRIG moved off GPIO 3 (pinmap §3); serial RX free for a future local console (not enabled in M1A) |
+| F-12 | 🟡 partially | unit tests + 3-gate CI now exist (NFR-007); MQTT/monitoring/event IDs remain M2+ |
+| H-01 | 🟡 design fixed, **not wired** | pinmap §3 (GPIO 3/1/ freed); physical rewiring in M6 |
+| H-02 | 🟡 design fixed, **not built** | divider spec + BOM rows (pinmap §5); per-pin voltage measurement is a pre-power gate (§10) |
+| H-03 | 🟡 design fixed, **not wired** | echoes moved to input-only 34/35/36/39 (pinmap §3) |
+| H-04 | 🟡 design fixed, **not powered** | external 5 V ≥ 1 A, common ground, decoupling (pinmap §6) |
+| H-05 | ⬜ open | LCD pull-up rail measurement still required (pinmap §8) |
+| H-06 | 🟡 design fixed, **not verified on board** | 220–330 Ω mandated in BOM (pinmap §7) |
+| H-07 | 🟡 partially | pin table + design doc exist (`pinmap-v2.md`); schematic/photo still due in M6 |
+| H-08 | 🟡 partially | logic-side mitigation merged (guarded close, `BLOCKED`/`FAULT`/`MANUAL`); obstruction sensor documented as required-but-absent (pinmap §9/§11) |
+| H-09 | ⬜ open | power budget is a datasheet *estimate* only; measurement is M6 |
+
+D-01…D-07 were resolved in M0 (see their Resolution column in §3).
+
 *Recorded during milestone M0. Update this document (don't silently delete
 findings) when M1 fixes them; link the fix commit/PR next to the finding.*
+Section 6 added in M1A (2026-10-27); commit links will be added when M1A is
+committed.

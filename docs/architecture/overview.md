@@ -23,8 +23,64 @@ flowchart TD
 
 | Component | Milestone | Status |
 |---|---|---|
-| ESP32 edge controller (sensing, local safety, display) | M0 baseline → M1 rework | 🟡 V1 logic building under PlatformIO |
-| Persistent outbound event queue | M2 | ⬜ planned |
+| ESP32 edge controller (sensing, local safety, display) | M0 baseline → M1 rework | 🟡 M1A: modular firmware + native tests merged into `main` working tree; hardware unverified |
+| Persistent outbound event queue | M2 | ⬜ planned (in-memory dedup queue exists, M1A) |
+| Wi-Fi + MQTT transport (topics, IDs, heartbeat) | M2 | ⬜ planned |
+| Mosquitto broker | M2 | ⬜ planned |
+| FastAPI backend + PostgreSQL | M3 | ⬜ planned |
+| SvelteKit dashboard | M4 | ⬜ planned |
+| Device simulator | M5 | ⬜ planned |
+| Flutter app | M10 (optional) | ⬜ planned |
+
+## Firmware architecture (as built in M1A)
+
+The edge controller is split by dependency direction: **pure logic never
+includes Arduino headers**, so the entire decision path compiles and runs on
+the host (`pio test -e native`).
+
+```mermaid
+flowchart LR
+    subgraph HAL["src/ (ESP32 only)"]
+      RD[sensor_reader<br/>independent TRIG + bounded pulseIn]
+      GL[main.cpp<br/>millis scheduler, servo/LCD/LED/serial]
+    end
+    subgraph CORE["lib/smartpark_core (pure C++11, unit-tested)"]
+      PC[parking_controller<br/>orchestration + policy]
+      SF[sensor_filter<br/>hysteresis / UNKNOWN / FAULT]
+      PD[passage_detector<br/>approach FSM]
+      OM[occupancy_manager<br/>bounded count / UNKNOWN]
+      BC[barrier_controller<br/>gate FSM + guarded close]
+      EQ[event_queue<br/>dedup + seq]
+      DM[display_manager<br/>16-char LCD lines]
+    end
+    RD -->|cm or -1| PC
+    GL -->|millis ticks| PC
+    PC --> SF
+    PC --> PD
+    PC --> OM
+    PC --> BC
+    PC --> EQ
+    PC --> DM
+    GL -->|drain| EQ
+    GL -->|view| DM
+```
+
+Design rules (enforced by review + the `-Werror` native build):
+
+- **Time is always a parameter.** No hidden `millis()` reads inside the core —
+  every `tick()/update(nowMs)` is deterministic and wrap-safe (tested across
+  the `millis()` rollover).
+- **`UNKNOWN` is a first-class state.** Timings that cannot be observed yield
+  `UNKNOWN`; no path converts missing data to "free"/"closed" (ADR-006).
+- **The queue is the single output surface** of the controller: serial logs
+  drain it today; the MQTT publisher in M2 will drain the same queue without
+  touching policy code.
+- **Hardware availability is a policy input, not an assumption.** Missing
+  passage/obstruction hardware appears as `UNKNOWN` feed or documented
+  provisional behavior (`pinmap-v2.md` §9), never as invented signals.
+
+Per-module responsibilities and their test coverage are listed in
+[`firmware/esp32/README.md`](../../firmware/esp32/README.md).
 | Wi-Fi + MQTT transport (topics, IDs, heartbeat) | M2 | ⬜ planned |
 | Mosquitto broker | M2 | ⬜ planned |
 | FastAPI backend + PostgreSQL | M3 | ⬜ planned |

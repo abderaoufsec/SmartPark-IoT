@@ -1,0 +1,20 @@
+component,quantity,status,voltage_spec,reserved_for,notes,supplier,unit_price_dzd,date_checked
+ESP32 DevKit WROOM-32 (exact model TBD),1,in prototype,3.3V logic,main controller,Assumption A1 of pinmap-v2.md must be verified before wiring,,TBD,TBD
+HC-SR04 ultrasonic module,4,in prototype,5V supply,entry / zoneA / zoneB / exit sensing,ECHO outputs 5V: needs divider (see next rows); independent TRIG required,,TBD,TBD
+SG90 servo,1,in prototype,4.8-6V,barrier actuator,Stall approx 0.65-0.75A: never power from ESP32 3.3V rail,,TBD,TBD
+LCD 16x2 HD44780 with PCF8574 I2C backpack 0x27,1,in prototype,verify 3.3V or 5V logic,local status display,Backlight pull-up rail must be measured before wiring (pinmap-v2 section 8),,TBD,TBD
+LED green,1,in prototype,3.3V drive,spaces-known-free indicator,Must use series resistor 220-330 ohm,,TBD,TBD
+LED red,1,in prototype,3.3V drive,known-full indicator,Must use series resistor 220-330 ohm,,TBD,TBD
+LED yellow zone A,1,in prototype,3.3V drive,zone A occupancy indicator,Must use series resistor 220-330 ohm,,TBD,TBD
+LED yellow zone B,1,in prototype,3.3V drive,zone B occupancy indicator,Must use series resistor 220-330 ohm,,TBD,TBD
+Breadboard and jumper wires,1 set,in prototype,-,prototyping,Photo and schematic required at build time,,TBD,TBD
+USB cable (data) for flashing,1,in prototype,5V,flashing and serial monitor,,,TBD,TBD
+Resistor 20 kOhm,4,required by V2 design,-,ECHO level divider upper leg,Level shifting for all four ECHO lines (H-02 fix); measure tap voltage before connecting GPIO,,TBD,TBD
+Resistor 10 kOhm,4,required by V2 design,-,ECHO level divider lower leg,Divider ratio 2:1 yields approx 3.33V from 5V ECHO,,TBD,TBD
+Resistor 220-330 Ohm,4,required by V2 design,-,LED series resistors,Replaces undocumented V1 LED resistors (H-06),,TBD,TBD
+Electrolytic capacitor 470uF 10V,1,required by V2 design,-,servo supply decoupling,Place at servo connector (H-04 mitigation),,TBD,TBD
+Ceramic capacitor 100nF,2,required by V2 design,-,supply decoupling,ESP32 5V rail and servo rail,,TBD,TBD
+Regulated 5V power supply >=1A (2A preferred),1,required by V2 design,5V,servo and sensor rail,Split from logic supply unless budget measured (H-09),,TBD,TBD
+Obstruction sensor (IR break-beam or HC-SR04),1,PLANNED M6 - not available,5V,gate obstruction detection -> GPIO 14 reserved,Required for FR-005 non-provisional close; firmware uses guarded provisional close while absent,,TBD,TBD
+Second sensing point per direction (HC-SR04 or IR beam),2,PLANNED M1B/M6 - not available,5V,passage confirmation entry+exit,Required for FR-003 confirmed counting; until present occupancy changes only via explicit reconciliation,,TBD,TBD
+Fuse or polyfuse for servo rail,1,PLANNED M6 - not available,5V,servo rail protection,Desk-model hardening,,TBD,TBD

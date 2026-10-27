@@ -21,9 +21,15 @@ Thanks for helping. This is a two-developer project first, open to others later
 ## Environment setup
 
 ```bash
-# Firmware
-pip install platformio          # or use the PlatformIO IDE extension
-cd firmware/esp32 && pio run    # must compile before you push
+# Firmware (both must pass before you push)
+pip install platformio           # or use the PlatformIO IDE extension
+cd firmware/esp32
+pio run                         # ESP32 compile (esp32dev)
+pio test -e native              # host unit tests (needs a local g++/clang/MSVC)
+# optional, same gate as CI:
+pio check -e native "--src-filters=+<lib/smartpark_core/*>+<src/*>" \
+  "--flags=--enable=warning,style,performance,portability --std=c++11 --suppress=missingIncludeSystem --inline-suppr" \
+  --fail-on-defect=medium --skip-packages
 
 # Docs-only changes need no toolchain; still check your markdown links.
 ```
