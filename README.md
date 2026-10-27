@@ -1,326 +1,211 @@
-# 🚗 Smart Parking System with Directional Guidance
+# SmartPark-IoT
 
 <div align="center">
 
 ![ESP32](https://img.shields.io/badge/ESP32-Microcontroller-red?style=for-the-badge&logo=espressif)
-![Arduino](https://img.shields.io/badge/Arduino-C++-00979D?style=for-the-badge&logo=arduino)
-![IoT](https://img.shields.io/badge/IoT-Smart%20Parking-blue?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
+![PlatformIO](https://img.shields.io/badge/PlatformIO-build%20baseline-orange?style=for-the-badge&logo=platformio)
+![Firmware CI](https://github.com/abderaoufsec/SmartPark-IoT/actions/workflows/firmware-ci.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 
-### 🚦 Intelligent Smart Parking System using ESP32
-
-Automatic vehicle counting, intelligent parking guidance, and automated barrier control.
+**An offline-first smart parking platform: ESP32 firmware, MQTT, FastAPI, PostgreSQL, SvelteKit — and eventually Flutter.**
 
 </div>
 
-
-# 📖 Overview
-
-Finding a parking space can be frustrating, especially when drivers do not know whether spaces are available or which direction to take after entering a parking lot. Traditional parking systems rely on manual supervision, causing traffic congestion, inaccurate vehicle counting, and unnecessary delays.
-
-This project presents a **Smart Parking System** powered by an **ESP32 microcontroller** capable of automatically counting vehicles, controlling the entrance barrier, monitoring parking occupancy, and guiding drivers toward available parking zones using ultrasonic sensors.
-
-The system provides real-time information through an LCD display while reducing human intervention and improving parking efficiency.
+> **Current milestone: M0 — repository modernization.**
+> The only working software today is the *original V1 Arduino firmware*, archived
+> and rebuilt with PlatformIO as a reproducible baseline. The MQTT transport,
+> backend, database, dashboard, simulator and mobile app are **planned, not
+> implemented** — see [the feature status table](#-feature-status) below.
 
 ---
 
-# ✨ Features
+## Overview
 
-- 🚗 Automatic vehicle detection
-- 🚦 Automatic entrance barrier
-- 📊 Real-time vehicle counting
-- 🅿️ Parking capacity management
-- 🧭 Directional guidance (Zone A / Zone B)
-- 📟 LCD information display
-- 🟢 Parking Available indicator
-- 🔴 Parking Full indicator
-- 🚘 Zone occupancy monitoring
-- ⚡ Real-time embedded processing
-- 🔄 Debounce protection against false detections
-- 🎯 Smooth servo motor movement
+Finding a parking space is frustrating when drivers cannot see whether spaces are
+free or which way to go inside the lot. SmartPark-IoT evolves an academic ESP32
+prototype into a professional, open-source IoT platform that counts vehicles,
+controls a demonstration gate, shows free-space guidance on-site, and — from M2
+onward — reports occupancy over MQTT to a local-first backend that keeps working
+when the internet does not.
 
----
+**Design principles** (full rationale in [the blueprint](docs/SMARTPARK_V2_COMPLETE_PROJECT_BLUEPRINT.md)):
 
-# 🛠 Hardware Components
+- **Offline-first** — the ESP32 keeps sensing and running safe local gate logic
+  with no Wi-Fi, broker or cloud available.
+- **Honest states** — occupancy can be *unknown*; the system must never invent
+  free spaces after a reboot or a sensor failure.
+- **Evidence over claims** — features are only "done" when tests, logs or
+  recorded hardware results back them up.
+
+## 🚦 Feature status
+
+Statuses reflect what is **in this repository right now**, not what is planned.
+
+| Feature | Status | Evidence / notes |
+|---|---|---|
+| Vehicle counting (entry/exit) | 🟡 V1 baseline code | `legacy/v1/` archive + `firmware/esp32/`; **not re-validated on hardware in this repo** |
+| Automatic barrier (SG90 servo) | 🟡 V1 baseline code | same — timed close is a [documented safety risk](docs/hardware/v1-audit.md) |
+| LCD guidance + status LEDs | 🟡 V1 baseline code | same — 17-character overflow bug [documented](docs/hardware/v1-audit.md) |
+| Zone A / Zone B occupancy LEDs | 🟡 V1 baseline code | same |
+| PlatformIO build + CI compile | ✅ Working (M0) | [`firmware-ci` workflow](.github/workflows/firmware-ci.yml) builds on every push/PR |
+| Direction-aware passage detection | ❌ Not implemented | V1 counts approach, not confirmed crossing (M1) |
+| Sensor cross-talk-safe triggering | ❌ Not implemented | V1 shares one TRIG across 4 sensors (M1) |
+| Persistent occupancy across reboot | ❌ Not implemented | counter resets (M1) |
+| Non-blocking, obstruction-aware gate FSM | ❌ Not implemented | V1 uses blocking `delay()` (M1) |
+| Unit / hardware test suite | ❌ Not started | planned from M1 (see [roadmap](docs/milestones/roadmap.md)) |
+| Wi-Fi + MQTT + offline event queue | ⬜ Planned M2 | [roadmap](docs/milestones/roadmap.md) |
+| FastAPI + PostgreSQL backend | ⬜ Planned M3 | [roadmap](docs/milestones/roadmap.md) |
+| SvelteKit operator dashboard | ⬜ Planned M4 | [roadmap](docs/milestones/roadmap.md) |
+| Device simulator + end-to-end demo | ⬜ Planned M5 | [roadmap](docs/milestones/roadmap.md) |
+| Hardware calibration & measured results | ⬜ Planned M6 | no measured results exist yet |
+| Flutter mobile app | ⬜ Planned (M10, optional) | explicitly out of MVP scope |
+
+Legend: ✅ verified working · 🟡 code exists, limited/no re-verification · ❌ known gap · ⬜ planned.
+
+## 🏗 Architecture
+
+Target architecture for the MVP (from [`docs/architecture/overview.md`](docs/architecture/overview.md)):
+
+```mermaid
+flowchart TD
+    S[Ultrasonic / passage sensors] --> E[ESP32 edge controller]
+    E --> L[LCD, LEDs, prototype gate]
+    E --> Q[Outbound event queue]
+    Q -->|Wi-Fi + MQTT| B[Mosquitto broker]
+    B --> I[FastAPI backend MQTT consumer]
+    I --> DB[(PostgreSQL)]
+    DB --> API[REST + WebSocket API]
+    API --> W[SvelteKit dashboard]
+    SIM[Device simulator] --> B
+```
+
+**What exists today (M0):** only the *ESP32 edge controller* box — the original
+V1 firmware, unmodified in behavior, building under PlatformIO. Everything right
+of the queue is planned work.
+
+The ESP32 always owns physical safety: losing the network must never stop local
+sensing or make the gate behave unsafely.
+
+## 🛠 Hardware (V1 prototype)
 
 | Component | Quantity |
-|------------|---------:|
-| ESP32 Development Board | 1 |
-| HC-SR04 Ultrasonic Sensor | 4 |
-| SG90 Servo Motor | 1 |
-| LCD 16x2 I2C Display | 1 |
-| Green LED | 1 |
-| Red LED | 1 |
-| Zone A LED | 1 |
-| Zone B LED | 1 |
-| Breadboard | 1 |
-| Jumper Wires | Several |
-| USB Cable | 1 |
+|---|---:|
+| ESP32 development board | 1 |
+| HC-SR04 ultrasonic sensor | 4 |
+| SG90 servo motor | 1 |
+| 16×2 I2C LCD (address 0x27) | 1 |
+| LEDs (green, red, zone A, zone B) | 4 |
+| Breadboard, resistors, jumper wires, USB cable | — |
 
----
+### Pin assignment (as implemented in V1)
 
-# ⚙ System Architecture
+| Device | GPIO | Warning |
+|---|---|---|
+| Servo (barrier) | 13 | PWM only; see power notes in audit |
+| Green LED / Red LED | 26 / 27 | |
+| Zone A LED / Zone B LED | 25 / 33 | |
+| Shared ultrasonic TRIG | 3 | **Conflicts with UART0 RX** (Serial RX unusable) |
+| Echo: entry / zone A / zone B / exit | 15 / 2 / 4 / 5 | **GPIO 2 & 5 are boot-strap pins; 5 V echo not level-shifted** |
+| LCD SDA / SCL | 21 / 22 | ESP32 default I2C pins |
 
-```text
-                   Vehicle Entry
-                        │
-                        ▼
-              Entry Ultrasonic Sensor
-                        │
-                        ▼
-                  ESP32 Controller
-      ┌────────────┬────────────┬────────────┐
-      ▼            ▼            ▼
- Servo Motor    LCD Display     LEDs
-      │            │            │
-      ▼            ▼            ▼
-Automatic     Parking Info    Status
-Barrier
+> ⚠️ **Before powering hardware:** read [`docs/hardware/v1-audit.md`](docs/hardware/v1-audit.md).
+> The V1 wiring has unresolved electrical risks (5 V echo into 3.3 V-only GPIOs,
+> boot-strap pin usage, UART conflict) and the barrier close logic is not safe
+> for a real gate. This is a supervised desk demonstrator, not a deployed barrier.
 
-                 │
-       ┌─────────┴─────────┐
-       ▼                   ▼
+## 📸 Original V1 prototype
 
- Zone A Sensor        Zone B Sensor
-```
+Physical model built for the original academic project by
+[Mehdi Koceir](https://github.com/MehdiKoceir) (photo preserved from the
+[original repository's README](https://github.com/MehdiKoceir/Parking-intelligent-)):
 
----
+<img src="docs/images/v1-prototype.png" alt="Physical SmartPark V1 prototype: model parking lot with Zone A and Zone B, ultrasonic sensors, LCD, breadboard ESP32" width="520">
 
-# 🚘 System Workflow
+*This photo comes from the original V1 project. It was not produced during the
+SmartPark-IoT M0 milestone, and no new hardware results exist yet.*
 
-```text
-Vehicle Arrives
-      │
-      ▼
-Entry Sensor Detects Vehicle
-      │
-      ▼
-Is Parking Full?
+## 🚀 Quick start (firmware)
 
-      │
- ┌────┴────┐
- │         │
-Yes        No
- │          │
- ▼          ▼
+### Prerequisites
 
-Keep      Increment
-Barrier   Counter
-Closed
-           │
-           ▼
-Calculate Free Spaces
+- Git
+- Python 3.10+ with [PlatformIO Core](https://docs.platformio.org/en/latest/core/installation.html)
+  (`pip install platformio`) — or the PlatformIO IDE extension for VS Code
+- An ESP32 Dev Module (or set `board` in `firmware/esp32/platformio.ini`)
 
-Check Zone A
-
-Check Zone B
-
-Display Direction
-
-Open Barrier
-
-Vehicle Enters
-
-Close Barrier
-```
-
----
-
-# 📟 LCD Output
-
-### Parking Available
-
-```text
-SMART PARKING
-
-Free: 4 GO LEFT
-```
-
-### Alternative Route
-
-```text
-SMART PARKING
-
-Free: 2 GO RIGHT
-```
-
-### Parking Full
-
-```text
-SMART PARKING
-
-Free:0 PARK FULL
-```
-
----
-
-# 🚦 LED Status
-
-| LED | Description |
-|------|-------------|
-| 🟢 Green | Parking Available |
-| 🔴 Red | Parking Full |
-| 🟡 Zone A | Zone A Occupied |
-| 🟡 Zone B | Zone B Occupied |
-
----
-
-# 🔌 Pin Configuration
-
-| Device | GPIO |
-|---------|------|
-| Servo Motor | GPIO 13 |
-| Green LED | GPIO 26 |
-| Red LED | GPIO 27 |
-| Zone A LED | GPIO 25 |
-| Zone B LED | GPIO 33 |
-| Shared Trigger | GPIO 3 |
-| Entry Echo | GPIO 15 |
-| Zone A Echo | GPIO 2 |
-| Zone B Echo | GPIO 4 |
-| Exit Echo | GPIO 5 |
-| LCD SDA | GPIO 21 |
-| LCD SCL | GPIO 22 |
-
----
-
-# 📂 Project Structure
-
-```text
-Smart-Parking-System/
-│
-├── code/
-│   └── smart_parking.ino
-│
-├── report/
-│   └── Smart_Parking_Report.pdf
-│
-├── images/
-│   ├── wiring.png
-│   ├── simulation.png
-│   ├── lcd.png
-│   └── architecture.png
-│
-├── mockups/
-│   ├── cover.png
-│   ├── system.png
-│   ├── barrier.png
-│   ├── lcd.png
-│   └── wiring.png
-│
-└── README.md
-```
-
----
-
-# 🚀 Installation
-
-### Clone the Repository
+### Build
 
 ```bash
-git clone https://github.com/yourusername/Smart-Parking-System.git
+git clone https://github.com/abderaoufsec/SmartPark-IoT.git
+cd SmartPark-IoT/firmware/esp32
+pio run                # compile with pinned toolchain & libraries
+pio run -t upload      # flash the board
+pio device monitor     # 115200 baud serial output
 ```
 
-### Install Arduino Libraries
+All platform and library versions are **pinned** in
+[`firmware/esp32/platformio.ini`](firmware/esp32/platformio.ini) — two
+developers get the same build. CI runs the same `pio run` on every push and pull
+request.
 
-- ESP32 Board Package
-- LiquidCrystal_I2C
-- ESP32Servo
+## 📂 Repository structure
 
-### Select Board
-
+```text
+SmartPark-IoT/
+├── README.md                     ← you are here
+├── LICENSE  (MIT)  CONTRIBUTING.md  SECURITY.md  CHANGELOG.md
+├── .gitignore  .editorconfig  .gitattributes  .env.example
+├── .github/
+│   ├── workflows/firmware-ci.yml ← PlatformIO compile on push/PR
+│   └── PULL_REQUEST_TEMPLATE.md
+├── firmware/esp32/               ← PlatformIO project (V1 logic, V2 baseline)
+│   ├── platformio.ini
+│   └── src/main.cpp
+├── docs/
+│   ├── SMARTPARK_V2_COMPLETE_PROJECT_BLUEPRINT.md  ← full spec
+│   ├── architecture/  requirements/  hardware/
+│   ├── milestones/  decisions/  images/
+├── legacy/v1/                    ← immutable archive of the original project
+│   ├── parking_intelligent.ino
+│   ├── original-report.pdf
+│   └── README.md                 ← provenance & SHA-256 checksums
+├── backend/      ← planned M3   frontend/   ← planned M4
+├── simulation/   ← planned M5   mobile/     ← planned M10 (optional)
 ```
-ESP32 Dev Module
-```
 
-### Upload
+Planned directories do **not** exist yet on purpose — no empty placeholder code.
 
-Compile and upload the project using Arduino IDE.
+## 📚 Documentation
 
-Open the Serial Monitor at **115200 baud**.
+| Document | Purpose |
+|---|---|
+| [Project blueprint](docs/SMARTPARK_V2_COMPLETE_PROJECT_BLUEPRINT.md) | Complete V2 specification & research basis |
+| [Architecture overview](docs/architecture/overview.md) | Components, trust boundaries, data flow |
+| [Requirements](docs/requirements/requirements.md) | FR/NFR IDs used in issues & tests |
+| [Hardware & V1 audit](docs/hardware/v1-audit.md) | Firmware bugs, electrical risks, unknowns |
+| [Roadmap M0–M10](docs/milestones/roadmap.md) | Milestones and exit gates |
+| [M0 status](docs/milestones/m0.md) | What M0 delivered + acceptance checklist |
+| [Decision log](docs/decisions/0001-baseline.md) | Why fork, why monorepo, baseline hashes |
 
----
+## 🤝 Contributing
 
-# 🧪 Simulation
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) for branch/commit/PR rules and
+[`SECURITY.md`](SECURITY.md) for reporting vulnerabilities **and for the
+prototype safety limitations**. Changes are reviewed before merging; see the
+roadmap for which milestone owns which work.
 
-The project can be simulated using **Wokwi** before deploying it to physical hardware.
+## 👨‍💻 Authors & attribution
 
-Simulation validates:
+- **Original academic project:** [Mehdi Koceir](https://github.com/MehdiKoceir) —
+  Master's student in Computer Systems & Networks (SIR), University of Blida.
+  Source: [MehdiKoceir/Parking-intelligent-](https://github.com/MehdiKoceir/Parking-intelligent-)
+- **SmartPark-IoT platform modernization:** [abderaoufsec](https://github.com/abderaoufsec)
 
-- Vehicle detection
-- Entry and exit counting
-- Servo barrier operation
-- LCD updates
-- LED indicators
-- Parking availability
-- Direction guidance
+## 📄 License
 
----
-
-# 📈 Future Improvements
-
-- 📱 Mobile Application
-- 🌐 Web Dashboard
-- ☁ Cloud Database Integration
-- 📡 MQTT Communication
-- 🤖 AI Parking Prediction
-- 📷 License Plate Recognition
-- 💳 Smart Payment System
-- 📍 Individual Parking Space Sensors
-- 🔔 Notifications
-- 📊 Analytics Dashboard
-
----
-
-# 📊 Project Summary
-
-| Feature | Status |
-|----------|--------|
-| Vehicle Counting | ✅ |
-| Automatic Barrier | ✅ |
-| LCD Display | ✅ |
-| Parking Guidance | ✅ |
-| Zone Detection | ✅ |
-| LED Indicators | ✅ |
-| ESP32 Integration | ✅ |
-| HC-SR04 Sensors | ✅ |
-| Servo Motor | ✅ |
-
-<img width="828" height="1472" alt="image" src="https://github.com/user-attachments/assets/ac82b34f-466c-4032-bf4b-be2cbf1e7791" />
-
-
----
-
-# 👨‍💻 Author
-
-**Mehdi Koceir**
-
-Master's Student in Computer Systems & Networks (SIR)
-
-University of Blida
-
-GitHub: **https://github.com/MehdiKoceir**
-
----
-
-# ⭐ Support
-
-If you enjoyed this project:
-
-⭐ Star this repository
-
-🍴 Fork it
-
-📢 Share it with others
-
----
-
-<div align="center">
-
-### 🚗 Smart Parking System
-
-**An ESP32-based Embedded System for Intelligent Parking Management**
-
-Made with ❤️ using **ESP32, Arduino, C++, and IoT Technologies**
-
-</div>
+[MIT](LICENSE) — chosen by the maintainers during the M0 review
+(2026-10-27). The original README used an MIT badge even though no
+`LICENSE` file ever existed in the upstream repository; that gap is now closed
+for real. The copyright notice credits both the original author and the
+modernization contributors — if either author prefers a different license, it
+must be changed jointly by PR before the first release.
