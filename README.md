@@ -52,7 +52,7 @@ Statuses reflect what is **in this repository right now**, not what is planned.
 | Sensor cross-talk-safe triggering | 🟡 M1A code, not measured | independent TRIGs + 80 ms staggered slots; acoustic verification remains M6 |
 | Persistent occupancy across reboot | ❌ Not implemented | boots `UNKNOWN` and defers admission instead (safe interim); NVS = M1B |
 | Non-blocking, obstruction-aware gate FSM | 🟡 M1A logic | no `delay()` in `loop()`; guarded provisional close; obstruction sensing = M6 |
-| Unit test suite (host, no hardware) | ✅ Working (M1A) | 41 tests, `pio test -e native`, green locally & wired into CI |
+| Unit test suite (host, no hardware) | ✅ Working (M1A) | 41 tests, `pio test -e native`, green locally and in [CI](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932) |
 | Wi-Fi + MQTT + offline event queue | ⬜ Planned M2 | [roadmap](docs/milestones/roadmap.md) |
 | FastAPI + PostgreSQL backend | ⬜ Planned M3 | [roadmap](docs/milestones/roadmap.md) |
 | SvelteKit operator dashboard | ⬜ Planned M4 | [roadmap](docs/milestones/roadmap.md) |

@@ -34,7 +34,7 @@ versions follow [Semantic Versioning](https://semver.org/) once releases start.
   PlatformIO 6.2.0, `-Wall -Wextra -Werror`); `-Wall -Wextra` on `esp32dev`.
 - CI (`.github/workflows/firmware-ci.yml`) extended to three jobs: ESP32
   compile, native unit tests, cppcheck (`pio check`, medium gate).
-  *(Execution on GitHub = NOT TESTED until pushed — see `m1a.md` §5.)*
+  *(All three green on GitHub: [run #2](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932).)*
 - `docs/milestones/m1a.md` — M1A status, verification record, 47/0/3
   acceptance checklist, risks, M1B recommendation.
 - Architecture doc: firmware module diagram and design rules

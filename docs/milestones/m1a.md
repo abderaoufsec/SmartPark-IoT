@@ -1,8 +1,9 @@
 # M1A — Firmware architecture, safe hardware design, native unit testing
 
-**Status: complete (local verification), pending review/commit** · date:
-2026-10-27 · branch: `main` (no branches created, nothing committed or pushed
-per milestone instructions) · supersedes nothing; follows [m0.md](m0.md).
+**Status: complete — committed, pushed and CI-green** · date: 2026-10-27 ·
+branch: `main` (no branches created; commit `8746b5a` pushed with maintainer
+approval, [CI run #2](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932)
+all 3 jobs green) · supersedes nothing; follows [m0.md](m0.md).
 
 Scope per the M1A task brief and [roadmap](roadmap.md) M1 steps 1–6 (step 7
 persistence = M1B). Nothing under `legacy/v1/` was modified (hashes re-verified
@@ -152,9 +153,9 @@ FAIL = broken · NOT TESTED = cannot be verified without hardware/GitHub/push.
 | 3.11 | Entry/exit events + incomplete passage sequences | PASS | `test_approach_then_cancel_never_confirms`, `test_exit_approach_never_touches_gate`, `test_full_cycle_*` |
 | 3.12 | Whole suite green | PASS | `pio test -e native` → **41/41** |
 | **Task 4 — CI** |
-| 4.1 | Job 1: ESP32 firmware compilation | PASS (local) / NOT TESTED (on GitHub) | identical command run locally (green); workflow not yet pushed |
-| 4.2 | Job 2: native C++ unit tests | PASS (local) / NOT TESTED (on GitHub) | same suite green locally; CI execution pending push |
-| 4.3 | Job 3: static checks (cppcheck, medium gate) | PASS (local) / NOT TESTED (on GitHub) | `pio check` green locally; workflow pending push |
+| 4.1 | Job 1: ESP32 firmware compilation | PASS | [CI run #2](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932) job green + identical clean build green locally |
+| 4.2 | Job 2: native C++ unit tests | PASS | CI run #2 green on ubuntu g++ (41/41) + same suite green locally |
+| 4.3 | Job 3: static checks (cppcheck, medium gate) | PASS | CI run #2 green + `pio check` green locally |
 | 4.4 | Dependencies pinned; no extra services | PASS | `platformio==6.2.0`, `espressif32@6.13.0`, Unity/cppcheck resolved by that core; YAML parses |
 | **Task 5 — documentation** |
 | 5.1 | Firmware README rewritten (structure, commands, behavior changes) | PASS | `firmware/esp32/README.md` |
@@ -172,8 +173,10 @@ FAIL = broken · NOT TESTED = cannot be verified without hardware/GitHub/push.
 | H.6 | Build actually compiles (never claimed without a build) | PASS | clean `pio run` log, exit 0, 0 warnings |
 | H.7 | Requirements not silently changed | PASS | requirements.md status column edits only |
 
-**Totals: 47 PASS · 0 FAIL · 3 NOT TESTED** (the three CI-execution rows,
-untestable until the workflow is pushed to GitHub).
+**Totals: 50 PASS · 0 FAIL · 0 NOT TESTED** (rows 4.1–4.3 were cleared by
+[CI run #2](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932)
+after the approved push; the remaining hardware rows stay PASS (design) as
+marked — nothing physical is claimed).
 
 ## 6. Known risks carried into M1B
 
@@ -209,5 +212,6 @@ Scope proposal (blueprint M1 continuation; still no MQTT):
    wiring, define the reaction-time test — enables replacing the provisional
    guarded close with FR-005-grade protection (or keep M6 for the physical
    test).
-5. **CI follow-up**: confirm the three jobs actually run green on GitHub once
-   pushed, and update §5 rows 4.1–4.3 from NOT TESTED to PASS with run links.
+5. **CI follow-up — DONE**: the three jobs ran green on GitHub
+   ([run #2](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932),
+   commit `8746b5a`); §5 rows 4.1–4.3 now PASS with run links.
