@@ -1,0 +1,9 @@
+# Normalize line endings for text files (worktree gets native EOL).
+* text=auto
+
+# Archives under legacy/ must stay byte-identical to the original upstream
+# commits, regardless of the user's core.autocrlf setting. Treat as binary.
+# (Rule order matters: these more specific rules come after `* text=auto`
+# so they win for files under legacy/.)
+legacy/v1/*.ino -text
+legacy/v1/*.pdf binary
