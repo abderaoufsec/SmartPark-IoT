@@ -1,0 +1,60 @@
+# Compiles the ESP32 firmware with PlatformIO on every push/PR that touches
+# firmware code or this workflow. Local parity: `cd firmware/esp32 && pio run`.
+name: firmware-ci
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware-ci.yml"
+  pull_request:
+    paths:
+      - "firmware/**"
+      - ".github/workflows/firmware-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firmware-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: PlatformIO build (esp32dev)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python (pinned)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip and PlatformIO packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/.platformio
+          key: pio-${{ runner.os }}-py3.12-${{ hashFiles('firmware/esp32/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-py3.12-
+
+      - name: Install PlatformIO Core (pinned)
+        run: pip install platformio==6.2.0
+
+      - name: Build firmware
+        run: pio run -d firmware/esp32
+
+      - name: Upload firmware artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp32dev-firmware
+          path: |
+            firmware/esp32/.pio/build/esp32dev/firmware.bin
+            firmware/esp32/.pio/build/esp32dev/firmware.elf
+          if-no-files-found: error
