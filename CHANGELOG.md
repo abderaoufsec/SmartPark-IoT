@@ -6,6 +6,61 @@ versions follow [Semantic Versioning](https://semver.org/) once releases start.
 
 ## [Unreleased]
 
+### Added — Milestone M1B (passage v2, persistence, obstruction guard, simulation)
+
+- **Two-point passage FSM v2** (`passage_detector`): confirms only an ordered
+  crossing (E1→E2 entry, X1→X2 exit); reversal cancels, gap-crossing and
+  primary-loss tolerance are explicit, entry/exit lanes are independent, and a
+  missing second point can never fabricate a count (FR-003).
+- **Second passage points (IR beams, selected not procured):** E2 → GPIO 4,
+  X2 → GPIO 16 in `pins.hpp` / `pinmap-v2.md` §9 (A4 no-PSRAM gate now
+  load-bearing); unwired inputs read FREE ⇒ counting stays reconciliation-only
+  by design.
+- **Obstruction input (GPIO 14) into the barrier FSM** (FR-005, `pinmap-v2.md`
+  §12): close needs a **fresh CLEAR** at sweep start *and* on every tick;
+  `BLOCKED`/`UNKNOWN` never authorize closing; a mid-sweep violation aborts to
+  reopen; fail-safe pull-up bias (open wire = BLOCKED = never closes).
+- **NVS occupancy persistence** (FR-007/NFR-004): `persistence.{hpp,cpp}` —
+  16-byte record (magic `SPRK`, version, embedded capacity, reserved, CRC-32)
+  with strict validation order; `src/nvs_store.hpp` wraps `Preferences`
+  (namespace `smartpark`, key `occ`), saved on count change. Boot restore →
+  `KNOWN` + `isRestored()` + `OCCUPANCY_RESTORED`; corrupt/out-of-range →
+  stays `UNKNOWN`, never clamped.
+- **FR-011 serial console** in the glue: `R <0..255>` reconcile, `?` one-line
+  `STATUS` (bounded parser, every outcome a visible event).
+- **`simulation/wokwi/`** — headless Wokwi project: `wokwi.toml` points at the
+  *same* `firmware.bin` the hardware build produces, `diagram.json` (ESP32
+  DevKit v1 + 4× HC-SR04 + pushbutton substitutes for the two beams and the
+  safety loop, I2C LCD 0x27, servo, 4 LEDs), 3 automation scenarios and a
+  README documenting every substitution. `wokwi-cli lint` is **green
+  (0 warnings)**; scenario execution is pending `WOKWI_CLI_TOKEN`.
+- **18 new native tests** (41 → **59**): entry/exit confirmation,
+  reversal-cancel, gap crossing, primary-loss tolerance (`UNKNOWN`+`FAULT`),
+  faulted secondary, beam debounce/chatter/staleness, simultaneous entry+exit,
+  occupancy bounds, obstruction `UNKNOWN`-never-closes / BLOCKED-aborts-close,
+  restore + corruption + full persistence validation battery (incl.
+  `crc32("123456789")==0xCBF43926`), `millis()` rollover grace, `uint32` seq
+  monotonicity over 70k events.
+
+### Changed — Milestone M1B
+
+- `pins.hpp`: GPIO 14 `RESERVED` → obstruction input; GPIO 4 spare → beam E2;
+  GPIO 16 adopted for beam X2 (requires PSRAM-less board, assumption A4).
+- Obstruction input bias is **pull-up** (`INPUT_PULLUP`): an earlier
+  `INPUT_PULLDOWN` in this milestone contradicted the documented fail-safe
+  rule ("broken wire reads HIGH = BLOCKED" — a pull-down made an open input
+  read CLEAR = unsafe) and was corrected before commit; the board adds an
+  external 10 kΩ pull-up on the same rail (no contention).
+- Event `seq` widened `uint16` → `uint32` (M2 queue growth); new sensor IDs
+  `SENSOR_BEAM_ENTRY=4`, `SENSOR_BEAM_EXIT=5`, `SENSOR_OBSTRUCTION=6`; new
+  event `OCCUPANCY_RESTORED`.
+- Docs: `pinmap-v2.md` restructured (§9 = IR beams, new §12 = obstruction
+  electrical assumptions; §10 checklist extended); `bom.csv` +2 rows (beams,
+  pull-ups); requirements FR-003/005/007 + NFR-004 status; architecture
+  overview, roadmap, root/firmware READMEs updated.
+- CI: **unchanged** — no Wokwi job is added until the repository secret
+  `WOKWI_CLI_TOKEN` exists.
+
 ### Added — Milestone M1A (firmware architecture, safe hardware design, native tests)
 
 - `docs/hardware/pinmap-v2.md` — **provisional** V2 GPIO map and electrical
@@ -126,6 +181,10 @@ versions follow [Semantic Versioning](https://semver.org/) once releases start.
 
 ### Open items (explicitly pending)
 
+- **M1B: Wokwi scenario execution** — `simulation/wokwi/` is written and
+  lints clean, but no scenario has been run yet: the `WOKWI_CLI_TOKEN` has
+  not been provided. Results are recorded in `m1b.md` only after a real run;
+  no simulation outcome is claimed without execution.
 - Branch strategy beyond M0 (`develop` + feature branches) not yet activated —
   M0 works directly on `main` as agreed.
 - Confirm the MIT license choice with original author Mehdi Koceir before the

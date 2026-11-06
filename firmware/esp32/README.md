@@ -1,9 +1,12 @@
 # SmartPark-IoT firmware (ESP32)
 
-PlatformIO project for the ESP32 edge controller. **Status: M1A** — the V1
-monolith has been split into a pure-logic core with host unit tests plus a thin
-Arduino hardware layer. The build is green in CI (`firmware-ci`: compile +
-native tests + cppcheck).
+PlatformIO project for the ESP32 edge controller. **Status: M1B** — the V1
+monolith was split into a pure-logic core with host unit tests plus a thin
+Arduino hardware layer (M1A); M1B adds the two-point passage FSM v2, the
+obstruction-guarded barrier close, CRC-valid NVS occupancy persistence and the
+FR-011 serial console, and wires this exact firmware binary into a Wokwi
+simulation (`simulation/wokwi/`). The build is green in CI (`firmware-ci`:
+compile + native tests + cppcheck); **59/59 native tests pass**.
 
 ## Commands
 
@@ -16,6 +19,9 @@ pio check -e native "--src-filters=+<lib/smartpark_core/*>+<src/*>" \
   --fail-on-defect=medium --skip-packages     # cppcheck (same command as CI)
 pio run -t upload       # flash over USB (board: esp32dev / "ESP32 Dev Module")
 pio device monitor      # serial monitor, 115200 baud
+# Wokwi simulation (after `pio run`; details in simulation/wokwi/README.md)
+wokwi-cli ../../simulation/wokwi lint --offline
+wokwi-cli ../../simulation/wokwi --scenario ../../simulation/wokwi/scenarios/01-boot-console.yaml
 ```
 
 Native tests need a host C++ compiler (g++/clang/MSVC). CI uses the
@@ -29,15 +35,17 @@ preinstalled `g++` on `ubuntu-latest`.
 | `lib/smartpark_core/event_types.hpp` | event enum/struct, names (serial now, MQTT in M2) | ✅ |
 | `lib/smartpark_core/event_queue.{hpp,cpp}` | fixed 16-slot ring, dedup, seq numbers, overflow counter | ✅ |
 | `lib/smartpark_core/sensor_filter.{hpp,cpp}` | per-sensor FSM: hysteresis, N-stable filtering, `UNKNOWN`/`FAULT`, staleness | ✅ |
-| `lib/smartpark_core/passage_detector.hpp` | lane FSM `IDLE→APPROACH→CONFIRMED/CANCELLED` (FR-003) | ✅ |
-| `lib/smartpark_core/occupancy_manager.hpp` | bounded count, boot `UNKNOWN`, no silent clamping | ✅ |
-| `lib/smartpark_core/barrier_controller.{hpp,cpp}` | non-blocking gate FSM, guarded close, abort/reopen | ✅ |
+| `lib/smartpark_core/passage_detector.hpp` | two-point passage FSM v2: ordered confirm, grace/tolerance/re-arm, entry+exit independent (FR-003) | ✅ |
+| `lib/smartpark_core/occupancy_manager.hpp` | bounded count, boot `UNKNOWN`, no silent clamping, `restore()`/`isRestored()` (FR-007) | ✅ |
+| `lib/smartpark_core/barrier_controller.{hpp,cpp}` | non-blocking gate FSM, obstruction-guarded close (fresh CLEAR every tick), abort/reopen | ✅ |
+| `lib/smartpark_core/persistence.{hpp,cpp}` | 16-byte occupancy record: magic/version/CAPACITY/reserved + CRC-32, strict validation order | ✅ |
 | `lib/smartpark_core/display_manager.{hpp,cpp}` | LCD 16×2 formatting, priority messages, never overflows | ✅ |
-| `lib/smartpark_core/parking_controller.{hpp,cpp}` | orchestration: samples → events → admission → gate policy | ✅ |
-| `src/pins.hpp` | GPIO map = `docs/hardware/pinmap-v2.md` | no (hardware) |
+| `lib/smartpark_core/parking_controller.{hpp,cpp}` | orchestration: samples → events → admission → gate policy (+ beam/obstruction feeds) | ✅ |
+| `src/pins.hpp` | GPIO map = `docs/hardware/pinmap-v2.md` (M1B: beams 4/16, obstruction 14) | no (hardware) |
 | `src/sensor_reader.{hpp,cpp}` | independent TRIG pulse + bounded `pulseIn` per slot | no (hardware) |
-| `src/main.cpp` | Arduino glue: setup/loop scheduling, servo/LCD/LED/serial | no (hardware) |
-| `test/test_core/test_main.cpp` | 41 Unity tests covering all M1A required areas | — |
+| `src/nvs_store.hpp` | `Preferences` wrapper (namespace `smartpark`, key `occ`) | no (hardware) |
+| `src/main.cpp` | Arduino glue: setup/loop scheduling, servo/LCD/LED/serial, NVS boot restore, FR-011 console | no (hardware) |
+| `test/test_core/test_main.cpp` | 59 Unity tests (41 M1A + 18 M1B) covering all required areas | — |
 
 Rule: **nothing under `lib/` may include Arduino headers.** If it touches a
 pin, it belongs in `src/`.
@@ -51,19 +59,28 @@ Safety-relevant (never reproduce V1 behavior at the cost of safety):
    `UNKNOWN → FAULT` after 10 consecutive timeouts; recovery needs 3 trusted
    samples.
 2. **Approach is never counted** (V1 F-02 counted anything within 15 cm).
-   The passage FSM needs an ordered second sensing point to confirm; the
-   current 4-sensor wiring has none, so **the occupancy count never changes
-   automatically** — only via explicit `reconcile()`. This is a documented
-   hardware limitation (`pinmap-v2.md` §11), not a missing feature.
+   The passage FSM v2 confirms only an *ordered* two-point crossing (entry
+   E1→E2, exit X1→X2): reversal cancels, a missing/stuck second point can
+   never fabricate a count, and with the beams absent the input reads FREE
+   forever, so **the occupancy count never changes automatically** — only via
+   explicit `reconcile()`. The second points (IR beams on GPIO 4/16) are
+   designed and firmware-ready but **not procured** (`pinmap-v2.md` §9/§11);
+   the count stays reconciliation-only until they are wired.
 3. **Occupancy boots `UNKNOWN`** (V1 F-06 invented `0/6` free spaces on every
    reboot). While unknown, admission is deferred: the gate stays closed and
-   the LCD shows `OCC:??? NO ENTRY`. Persistence lands in M1B (NFR-004).
+   the LCD shows `OCC:??? NO ENTRY`. M1B persists the count in NVS: a
+   **CRC-valid** 16-byte record restores it (flagged *recovered*, never
+   re-verified; `OCCUPANCY_RESTORED` event); a missing/corrupt/out-of-range
+   record leaves the state `UNKNOWN` — never clamped, never invented
+   (FR-007/NFR-004).
 4. **No blind timed close** (V1 F-04: `delay(2000)` then close). Closing
-   starts only after the entry lane reads a *valid* FREE for 3 s; any
-   non-FREE reading during the sweep aborts it (`BLOCKED →` reopen). This is
-   a **provisional guarded close, not a certified obstruction sensor** — the
-   entry beam's geometry is unverified (`pinmap-v2.md` §9) and there is no
-   dedicated obstruction sensor in the M1A BOM.
+   requires the entry lane to read a *valid* FREE for 3 s **and** a fresh
+   `CLEAR` on the obstruction input (GPIO 14) at sweep start *and* on every
+   tick of the sweep; any non-FREE lane or non-CLEAR obstruction aborts to
+   `BLOCKED →` reopen. The input fails safe (pull-up bias): an open wire
+   reads BLOCKED and can never authorize a close (`pinmap-v2.md` §12). The
+   lane-guard half is still **not a certified obstruction sensor** (geometry
+   unverified) and the obstruction *sensor* itself is planned for M6.
 5. **Independent per-sensor triggers, staggered 80 ms** (V1 F-01 shared one
    TRIG on GPIO 3 = UART0 RX, finding H-01). GPIO 3 is free again.
 6. **No `delay()` in `loop()`** (V1 F-05 froze sensing/display ≈3.4 s per
@@ -90,20 +107,31 @@ Correctness / observability:
     remote control in this milestone).
 12. **Serial event log** with `seq` numbers (FR-008 groundwork); the event
     queue is the single hand-off point MQTT will consume in M2.
+13. **FR-011 serial console** (M1B): `R <0..255>` reconcile, `?` one-line
+    `STATUS`. The parser is bounded, every outcome is a visible event, and
+    the console doubles as the assertion surface for the Wokwi scenarios.
 
 Intentionally *not* changed: capacity 6, 15/30 cm thresholds, servo pins/
 pulses (50 Hz, 500–2400 µs, 0–90°), 2.5 s approach debounce, I2C address
 0x27, boot splash text semantics (`BOOT - NO COUNT` replaces the 2 s splash).
 
-## Safety posture (M1A)
+## Safety posture (M1B)
 
-- Power on with the **gate path clear**; there is no obstruction sensor yet.
-- The gate **fails open** when the lane cannot be trusted (stays open rather
-  than closing on unknown input) and **fails closed for admission** (stays
-  shut while occupancy is unknown/full).
+- Power on with the **gate path clear**: with the obstruction sensor absent,
+  GPIO 14 floats HIGH via the pull-up = BLOCKED, so **no auto-close can ever
+  happen on the real desk build** until the M6 sensor lands (intended;
+  `pinmap-v2.md` §12).
+- The gate **fails open** when the lane or the obstruction input cannot be
+  trusted (stays open rather than closing on unknown input) and **fails
+  closed for admission** (stays shut while occupancy is unknown/full).
+- Input fail directions are deliberate and asymmetric: beams open → FREE
+  (never count), obstruction open → BLOCKED (never close).
+- Simulation honesty: `simulation/wokwi/` executes this firmware in Wokwi —
+  that is **simulation evidence only** and backs no electrical or physical
+  claim.
 - Provisional behaviors are marked as such in code comments and in
   `docs/hardware/pinmap-v2.md`; nothing here is validated on hardware — see
-  the M1A checklist in `docs/milestones/m1a.md`.
+  the checklists in `docs/milestones/m1a.md` and `docs/milestones/m1b.md`.
 
 ## Relationship to `legacy/v1/`
 

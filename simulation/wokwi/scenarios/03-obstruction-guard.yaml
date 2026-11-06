@@ -1,0 +1,81 @@
+# M1B scenario 3 — obstruction safety (pinmap §12, FR-005):
+#  a) an OPEN safety loop (released button = pull-up HIGH) reads BLOCKED and
+#     can never authorize a close;
+#  b) a mid-sweep BLOCKED aborts the close and reopens the gate;
+#  c) restoring CLEAR lets the armed window close the gate normally.
+# Semantics: btn_obs held PRESSED = loop closed = CLEAR; RELEASED = loop open
+# = BLOCKED (identical firmware readout to a broken wire).
+name: 'M1B obstruction guard (close requires CLEAR, abort + recovery)'
+version: 1
+author: 'SmartPark-IoT'
+
+steps:
+  - wait-serial: 'SmartPark-IoT V2 (M1B) boot'
+  - write-serial: 'R 1\n'
+  - wait-serial: 'OCCUPANCY_RECONCILED'
+
+  # Boot readout: safety loop open => fail-safe HIGH => BLOCKED
+  - write-serial: '?\n'
+  - wait-serial: 'obstruction=BLOCKED'
+
+  # 1) Open the gate with a real entry approach. The obstruction guard gates
+  #    only CLOSING: opening moves away from the vehicle and is never blocked.
+  - set-control:
+      part-id: u1
+      name: distance
+      value: 5
+  - wait-serial: 'ENTRY_APPROACH'
+  - delay: 1200ms
+  - write-serial: '?\n'
+  - wait-serial: 'STATUS occ=KNOWN count=1 free=5 gate=OPEN obstruction=BLOCKED'
+
+  # 2) Lane clears, loop closed => normal guarded auto-close
+  - set-control:
+      part-id: u1
+      name: distance
+      value: 400
+  - set-control:
+      part-id: btn_obs
+      name: pressed
+      value: 1
+  - delay: 6000ms
+  - write-serial: '?\n'
+  - wait-serial: 'gate=CLOSED obstruction=CLEAR'
+
+  # 3) Second approach reopens the gate (first approach was cancelled when
+  #    the primary cleared; re-approach debounce is 2500 ms, gap is > 6 s)
+  - set-control:
+      part-id: u1
+      name: distance
+      value: 5
+  - wait-serial: 'ENTRY_APPROACH'
+  - delay: 1200ms
+  - write-serial: '?\n'
+  - wait-serial: 'gate=OPEN obstruction=CLEAR'
+
+  # 4) Open the loop WHILE the gate is open and the lane is clearing:
+  #    the lane window satisfies but BLOCKED can never start a sweep
+  - set-control:
+      part-id: u1
+      name: distance
+      value: 400
+  - set-control:
+      part-id: btn_obs
+      name: pressed
+      value: 0
+  - delay: 6000ms
+  - write-serial: '?\n'
+  - wait-serial: 'gate=OPEN obstruction=BLOCKED'
+  # Still open after another window's worth of time — BLOCKED never closes
+  - delay: 5000ms
+  - write-serial: '?\n'
+  - wait-serial: 'gate=OPEN obstruction=BLOCKED'
+
+  # 5) Recovery: loop closed again => armed window + fresh CLEAR => close
+  - set-control:
+      part-id: btn_obs
+      name: pressed
+      value: 1
+  - delay: 1500ms
+  - write-serial: '?\n'
+  - wait-serial: 'gate=CLOSED obstruction=CLEAR'

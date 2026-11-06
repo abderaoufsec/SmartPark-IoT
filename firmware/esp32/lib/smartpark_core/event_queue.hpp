@@ -26,7 +26,7 @@ public:
   size_t size() const { return count_; }
   bool empty() const { return count_ == 0; }
   uint32_t overflowCount() const { return overflow_; }
-  uint16_t nextSeq() const { return seq_; }
+  uint32_t nextSeq() const { return seq_; }
 
   /** Random-access for tests/inspection; index 0 = oldest. */
   const ParkEvent& at(size_t i) const { return buf_[(head_ + i) % CAP]; }
@@ -37,7 +37,7 @@ private:
   size_t head_;  // index of oldest
   size_t count_;
   uint32_t overflow_;
-  uint16_t seq_;
+  uint32_t seq_;
 };
 
 } // namespace smartpark

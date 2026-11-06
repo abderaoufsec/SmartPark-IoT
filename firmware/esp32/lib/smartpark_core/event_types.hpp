@@ -15,7 +15,7 @@ enum class EventType : uint8_t {
   ENTRY_APPROACH_CANCELLED, // beam cleared without a confirmed passage
   EXIT_APPROACH,
   EXIT_APPROACH_CANCELLED,
-  PASSAGE_CONFIRMED_ENTRY,  // unreachable with current single-point hardware
+  PASSAGE_CONFIRMED_ENTRY,  // ordered two-point sequence (FR-003)
   PASSAGE_CONFIRMED_EXIT,
   OCCUPANCY_RECONCILED,     // operator/system set an explicit count
   OCCUPANCY_CHANGE_REJECTED,// out-of-range attempt (no silent clamping, F-10)
@@ -23,6 +23,7 @@ enum class EventType : uint8_t {
   BARRIER_STATE_CHANGED,    // value = BarrierState (see barrier_controller)
   SENSOR_CHANGED,           // sensorId + value = SensorState
   SENSOR_FAULT,             // sensorId escalated to FAULT
+  OCCUPANCY_RESTORED,       // count recovered from NVS (M1B; value = count)
 };
 
 inline const char* toString(EventType t) {
@@ -39,19 +40,30 @@ inline const char* toString(EventType t) {
     case EventType::BARRIER_STATE_CHANGED:     return "BARRIER_STATE_CHANGED";
     case EventType::SENSOR_CHANGED:            return "SENSOR_CHANGED";
     case EventType::SENSOR_FAULT:              return "SENSOR_FAULT";
+    case EventType::OCCUPANCY_RESTORED:        return "OCCUPANCY_RESTORED";
   }
   return "UNKNOWN_EVENT";
 }
 
-/** Fixed-size event record. `seq` is assigned by the queue (M2 uses it). */
+/**
+ * Fixed-size event record. `seq` is a uint32 assigned by the queue at
+ * enqueue: unique within a boot session (durable cross-boot IDs arrive with
+ * the MQTT event envelope in M2).
+ */
 struct ParkEvent {
   EventType type;
   uint8_t sensorId; // SENSOR_xxx for sensor events, 0xFF otherwise
   int16_t value;    // type-specific payload (state enums, counts, distances)
   uint32_t atMs;    // millis() timestamp supplied by the controller
-  uint16_t seq;     // monotonically increasing, assigned on enqueue
+  uint32_t seq;     // monotonically increasing, assigned on enqueue
 };
 
 constexpr uint8_t EVENT_NO_SENSOR = 0xFF;
+
+/**
+ * sensorId-specific `value` payload for SENSOR_CHANGED (documented
+ * exception): SENSOR_OBSTRUCTION carries ObstructionState (CLEAR/BLOCKED/
+ * UNKNOWN); every other sensorId carries SensorState.
+ */
 
 } // namespace smartpark

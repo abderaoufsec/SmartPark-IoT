@@ -11,11 +11,13 @@
 
 </div>
 
-> **Current milestone: M0 — repository modernization.**
-> The only working software today is the *original V1 Arduino firmware*, archived
-> and rebuilt with PlatformIO as a reproducible baseline. The MQTT transport,
-> backend, database, dashboard, simulator and mobile app are **planned, not
-> implemented** — see [the feature status table](#-feature-status) below.
+> **Current milestone: M1B — reliable passage detection, persistence & simulation.**
+> The working software today is the *modular V2 firmware* (M1A architecture +
+> M1B two-point passage FSM, obstruction-guarded close, NVS persistence, native
+> test suite, Wokwi simulation project). The original V1 Arduino firmware is
+> archived under `legacy/v1/`. The MQTT transport, backend, database, dashboard,
+> M5 simulator and mobile app are **planned, not implemented** — see
+> [the feature status table](#-feature-status) below.
 
 ---
 
@@ -43,16 +45,17 @@ Statuses reflect what is **in this repository right now**, not what is planned.
 
 | Feature | Status | Evidence / notes |
 |---|---|---|
-| Vehicle counting (entry/exit) | 🟡 M1A: manual reconciliation only | approach **never** auto-counts — second passage beam absent by design ([m1a](docs/milestones/m1a.md)); no hardware re-validation |
-| Automatic barrier (SG90 servo) | 🟡 M1A FSM, provisional close | closing needs observed valid-FREE lane and aborts on `UNKNOWN`; **no obstruction sensor yet** ([pinmap §9](docs/hardware/pinmap-v2.md)) |
+| Vehicle counting (entry/exit) | 🟡 M1B: two-point logic ready, manual reconciliation on hardware | approach **never** auto-counts; ordered two-point FSM v2 + IR beams on GPIO 4/16 designed but **not procured** ([pinmap §9](docs/hardware/pinmap-v2.md), [m1b](docs/milestones/m1b.md)); no hardware re-validation |
+| Automatic barrier (SG90 servo) | 🟡 M1B FSM, obstruction-guarded close | closing needs observed valid-FREE lane **and** a fresh `CLEAR` on GPIO 14 every tick; open input fails toward BLOCKED = never closes; obstruction sensor itself still absent ([pinmap §12](docs/hardware/pinmap-v2.md)) |
 | LCD guidance + status LEDs | 🟡 M1A logic (host-tested) | 17-char overflow fixed in `display_manager` (covered by the native suite); untested on hardware |
 | Zone A / Zone B occupancy LEDs | 🟡 M1A logic (host-tested) | unified hysteresis thresholds; blink = `UNKNOWN`/`FAULT` |
-| PlatformIO build + CI | ✅ Working | [`firmware-ci`](.github/workflows/firmware-ci.yml): compile + native tests + cppcheck (compile job green in M0; 3-job version runs on next push) |
-| Direction-aware passage detection | 🟡 M1A logic, hardware blocked | ordered two-point FSM implemented, unreachable until a second beam exists ([pinmap §11](docs/hardware/pinmap-v2.md)) |
+| PlatformIO build + CI | ✅ Working | [`firmware-ci`](.github/workflows/firmware-ci.yml): compile + native tests + cppcheck (3-job version green since [M1A run #2](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932); unchanged in M1B) |
+| Direction-aware passage detection | 🟡 M1B logic + simulation, hardware absent | ordered two-point FSM v2 unit-tested; second points (IR beams, GPIO 4/16) selected, not procured — unwired inputs read FREE so counts stay reconciliation-only ([pinmap §11](docs/hardware/pinmap-v2.md)) |
 | Sensor cross-talk-safe triggering | 🟡 M1A code, not measured | independent TRIGs + 80 ms staggered slots; acoustic verification remains M6 |
-| Persistent occupancy across reboot | ❌ Not implemented | boots `UNKNOWN` and defers admission instead (safe interim); NVS = M1B |
-| Non-blocking, obstruction-aware gate FSM | 🟡 M1A logic | no `delay()` in `loop()`; guarded provisional close; obstruction sensing = M6 |
-| Unit test suite (host, no hardware) | ✅ Working (M1A) | 41 tests, `pio test -e native`, green locally and in [CI](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932) |
+| Persistent occupancy across reboot | 🟡 M1B logic (host-tested) | CRC-valid NVS record restores the exact count (flagged *recovered*); corrupt/missing → `UNKNOWN`, never clamped; physical power-cycle evidence = M6 |
+| Non-blocking, obstruction-aware gate FSM | 🟡 M1B logic | no `delay()` in `loop()`; fresh-CLEAR guarded close + mid-sweep abort; obstruction *sensor* = M6 |
+| Wokwi simulation (headless) | 🟡 M1B configured | `simulation/wokwi/` runs the real `firmware.bin`; `lint` green (0 warnings); scenario execution **pending `WOKWI_CLI_TOKEN`** |
+| Unit test suite (host, no hardware) | ✅ Working (M1B) | **59 tests** (41 M1A + 18 M1B), `pio test -e native`, green locally; CI runs them on every push |
 | Wi-Fi + MQTT + offline event queue | ⬜ Planned M2 | [roadmap](docs/milestones/roadmap.md) |
 | FastAPI + PostgreSQL backend | ⬜ Planned M3 | [roadmap](docs/milestones/roadmap.md) |
 | SvelteKit operator dashboard | ⬜ Planned M4 | [roadmap](docs/milestones/roadmap.md) |
@@ -79,9 +82,10 @@ flowchart TD
     SIM[Device simulator] --> B
 ```
 
-**What exists today (M0):** only the *ESP32 edge controller* box — the original
-V1 firmware, unmodified in behavior, building under PlatformIO. Everything right
-of the queue is planned work.
+**What exists today (M0–M1B):** the *ESP32 edge controller* box — the modular
+V2 firmware (`lib/smartpark_core` + thin Arduino HAL), a 59-test host suite and
+a Wokwi simulation project that executes the same binary. Everything right of
+the queue is planned work.
 
 The ESP32 always owns physical safety: losing the network must never stop local
 sensing or make the gate behave unsafely.
@@ -139,9 +143,14 @@ SmartPark-IoT M0 milestone, and no new hardware results exist yet.*
 git clone https://github.com/abderaoufsec/SmartPark-IoT.git
 cd SmartPark-IoT/firmware/esp32
 pio run                # compile with pinned toolchain & libraries
+pio test -e native     # 59 host unit tests, no hardware needed
 pio run -t upload      # flash the board
 pio device monitor     # 115200 baud serial output
 ```
+
+Optional (simulation, no board needed): `wokwi-cli ../../simulation/wokwi lint`
+— see [`simulation/wokwi/README.md`](simulation/wokwi/README.md) for the
+scenario commands (they require a `WOKWI_CLI_TOKEN`).
 
 All platform and library versions are **pinned** in
 [`firmware/esp32/platformio.ini`](firmware/esp32/platformio.ini) — two
@@ -158,7 +167,7 @@ SmartPark-IoT/
 ├── .github/
 │   ├── workflows/firmware-ci.yml ← PlatformIO compile on push/PR
 │   └── PULL_REQUEST_TEMPLATE.md
-├── firmware/esp32/               ← PlatformIO project (V2 modular firmware + native tests, M1A)
+├── firmware/esp32/               ← PlatformIO project (V2 modular firmware + 59 native tests, M1A/M1B)
 │   ├── platformio.ini
 │   └── src/main.cpp
 ├── docs/
@@ -169,11 +178,14 @@ SmartPark-IoT/
 │   ├── parking_intelligent.ino
 │   ├── original-report.pdf
 │   └── README.md                 ← provenance & SHA-256 checksums
+├── simulation/wokwi/             ← Wokwi simulation project (M1B: diagram, scenarios)
 ├── backend/      ← planned M3   frontend/   ← planned M4
-├── simulation/   ← planned M5   mobile/     ← planned M10 (optional)
+├── mobile/       ← planned M10 (optional); M5 simulator extends simulation/
 ```
 
-Planned directories do **not** exist yet on purpose — no empty placeholder code.
+The `backend/` and `frontend/` directories do **not** exist yet on purpose —
+no empty placeholder code. `simulation/wokwi/` exists (M1B); the M5 device
+simulator will join it later.
 
 ## 📚 Documentation
 
@@ -185,6 +197,9 @@ Planned directories do **not** exist yet on purpose — no empty placeholder cod
 | [Hardware & V1 audit](docs/hardware/v1-audit.md) | Firmware bugs, electrical risks, unknowns |
 | [Roadmap M0–M10](docs/milestones/roadmap.md) | Milestones and exit gates |
 | [M0 status](docs/milestones/m0.md) | What M0 delivered + acceptance checklist |
+| [M1A status](docs/milestones/m1a.md) | Firmware architecture, safe hardware design, native tests |
+| [M1B status](docs/milestones/m1b.md) | Passage v2, persistence, obstruction guard, simulation |
+| [Wokwi simulation](simulation/wokwi/README.md) | How to lint/run the headless simulation |
 | [Decision log](docs/decisions/0001-baseline.md) | Why fork, why monorepo, baseline hashes |
 
 ## 🤝 Contributing

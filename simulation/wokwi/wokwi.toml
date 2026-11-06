@@ -1,0 +1,11 @@
+# SmartPark-IoT V2 — Wokwi simulation project (M1B).
+#
+# The firmware path points at the SAME binary produced by the hardware build
+# (`pio run -e esp32dev` in firmware/esp32/) — the simulation exercises exactly
+# the artifact that would be flashed to a real board. Build before simulating.
+# Paths are relative to this file (simulation/wokwi/).
+
+[wokwi]
+version = 1
+firmware = "../../firmware/esp32/.pio/build/esp32dev/firmware.bin"
+elf = "../../firmware/esp32/.pio/build/esp32dev/firmware.elf"

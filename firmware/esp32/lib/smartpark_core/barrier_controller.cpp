@@ -95,7 +95,11 @@ void BarrierController::updateLaneFreeTimer(uint32_t nowMs,
   }
 }
 
-void BarrierController::tick(uint32_t nowMs, SensorState laneEntry) {
+void BarrierController::tick(uint32_t nowMs, SensorState laneEntry,
+                             ObstructionState obstruction) {
+  // The obstruction input may only authorize a close when it is a *fresh*
+  // CLEAR: UNKNOWN (stale/never sampled) and BLOCKED are equivalent here —
+  // an unverified safety input can never start or finish a closing sweep.
   switch (state_) {
   case BarrierState::FAULT:
   case BarrierState::MANUAL:
@@ -120,15 +124,24 @@ void BarrierController::tick(uint32_t nowMs, SensorState laneEntry) {
 
   case BarrierState::OPEN:
     updateLaneFreeTimer(nowMs, laneEntry);
-    // Auto-close ONLY on sustained, valid, observed lane-FREE — never on a
-    // bare delay expiry (V1 F-04). UNKNOWN lane ⇒ timer never runs ⇒ stays open.
+    // Auto-close ONLY on sustained, valid, observed lane-FREE *and* a fresh
+    // CLEAR obstruction — never on a bare delay expiry (V1 F-04). UNKNOWN
+    // lane or obstruction ⇒ the sweep never starts ⇒ stays open.
     if (laneFreeTimerActive_ &&
         (nowMs - laneFreeSinceMs_) >= LANE_CLEAR_CONFIRM_MS) {
-      laneFreeTimerActive_ = false;
-      pendingClose_ = false;
-      startSweep(BarrierState::CLOSING, nowMs);
-    } else if (pendingClose_ && laneEntry != SensorState::VALID_FREE) {
-      state_ = BarrierState::BLOCKED; // wanted to close, lane not clear
+      if (obstruction == ObstructionState::CLEAR) {
+        laneFreeTimerActive_ = false;
+        pendingClose_ = false;
+        startSweep(BarrierState::CLOSING, nowMs);
+      }
+      // Not CLEAR (BLOCKED/UNKNOWN): keep the satisfied window armed so a
+      // later CLEAR closes immediately, but do not move. An explicit
+      // pendingClose with a non-clear guard still surfaces BLOCKED below.
+    }
+    if (state_ == BarrierState::OPEN && pendingClose_ &&
+        (laneEntry != SensorState::VALID_FREE ||
+         obstruction != ObstructionState::CLEAR)) {
+      state_ = BarrierState::BLOCKED; // wanted to close, guard input says no
     }
     return;
 
@@ -140,18 +153,21 @@ void BarrierController::tick(uint32_t nowMs, SensorState laneEntry) {
       startSweep(BarrierState::OPENING, nowMs);
       return;
     }
-    if (laneEntry == SensorState::VALID_FREE) {
-      // Lane became clear: return to OPEN and start the confirm window NOW
-      // (so a satisfied window closes without an extra hidden restart).
+    if (laneEntry == SensorState::VALID_FREE &&
+        obstruction == ObstructionState::CLEAR) {
+      // Both guards observably clear: return to OPEN and start the confirm
+      // window NOW (so a satisfied window closes without a hidden restart).
       state_ = BarrierState::OPEN;
       laneFreeTimerActive_ = true;
       laneFreeSinceMs_ = nowMs;
     }
-    return; // otherwise stay BLOCKED (close requested, lane not clear)
+    return; // otherwise stay BLOCKED (close wanted, guard input not clear)
 
   case BarrierState::CLOSING: {
-    if (laneEntry != SensorState::VALID_FREE) {
-      // Abort: occupied OR unknown OR faulty during the sweep.
+    if (laneEntry != SensorState::VALID_FREE ||
+        obstruction != ObstructionState::CLEAR) {
+      // Abort: occupied OR unknown OR faulty lane, or a non-CLEAR
+      // obstruction (object present / faulted / stale) during the sweep.
       if (aborts_ < 0xFFu) ++aborts_; // saturating diagnostics counter
       abortReopen_ = true;
       state_ = BarrierState::BLOCKED;

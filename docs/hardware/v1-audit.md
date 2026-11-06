@@ -110,7 +110,7 @@ what still needs hardware work. “Design” = specified in
 | H-05 | ⬜ open | LCD pull-up rail measurement still required (pinmap §8) |
 | H-06 | 🟡 design fixed, **not verified on board** | 220–330 Ω mandated in BOM (pinmap §7) |
 | H-07 | 🟡 partially | pin table + design doc exist (`pinmap-v2.md`); schematic/photo still due in M6 |
-| H-08 | 🟡 partially | logic-side mitigation merged (guarded close, `BLOCKED`/`FAULT`/`MANUAL`); obstruction sensor documented as required-but-absent (pinmap §9/§11) |
+| H-08 | 🟡 partially | logic-side mitigation merged (guarded close, `BLOCKED`/`FAULT`/`MANUAL`); obstruction sensor documented as required-but-absent (pinmap §12/§11) |
 | H-09 | ⬜ open | power budget is a datasheet *estimate* only; measurement is M6 |
 
 D-01…D-07 were resolved in M0 (see their Resolution column in §3).

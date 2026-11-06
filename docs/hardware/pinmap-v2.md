@@ -1,9 +1,14 @@
 # SmartPark-IoT V2 — pin map & electrical design (PROVISIONAL)
 
 **Status: PROVISIONAL DESIGN — NOT PHYSICALLY TESTED, NOT WIRED.**
-No measurement, breadboard build or simulation backs this document yet. It is a
-design proposal produced from source analysis during milestone M1A. **Verify
-every item in §10 before connecting power.** Physical validation belongs to M6
+No measurement or breadboard build backs this document; it is a design
+proposal produced from source analysis during milestone M1A and revised in
+M1B (second passage points on GPIO 4/16 → new §9, obstruction input
+electrical assumptions → new §12). A Wokwi simulation
+([`simulation/wokwi/`](../../simulation/wokwi/)) executes the firmware
+against a logically-equivalent wiring, but **it validates none of the
+electrical assumptions below** — those remain NOT TESTED. **Verify every
+item in §10 before connecting power.** Physical validation belongs to M6
 ([roadmap](../milestones/roadmap.md)).
 
 Companion documents: [v1-audit.md](v1-audit.md) (findings this design answers),
@@ -19,7 +24,7 @@ Companion documents: [v1-audit.md](v1-audit.md) (findings this design answers),
 | A1 | Classic **ESP32** (WROOM-32 / WROVER) on a 30- or 38-pin "ESP32 Dev Module"/DevKit v1 board, **3.3 V logic** | Pin availability, no 5 V tolerance | Read silkscreen of the physical board; `esptool.py flash_id` |
 | A2 | USB-serial bridge (CP2102/CH340) wired to UART0 = **GPIO1/TX0, GPIO3/RX0** | GPIO 1/3 must never be peripherals | Board schematic or continuity check |
 | A3 | Flash occupies **GPIO 6–11** (internal, usually not broken out) | Never use | Datasheet/module label |
-| A4 | No PSRAM assumption (works on WROOM-32) | GPIO 16/17 free on WROOM but used by PSRAM on WROVER → we avoid them anyway | — |
+| A4 | **No PSRAM** (classic WROOM-32 DevKit) — **load-bearing since M1B** | GPIO 16 (now the X2 exit beam, §9) and 17 are free on a WROOM-32 but used by PSRAM on a WROVER: a WROVER board invalidates the M1B pin map | Read the module label / `esptool.py flash_id` (§10) |
 | A5 | 5 V available from USB/external rail for HC-SR04 VCC and (externally) the servo | Sensor supply | Measure rail under load |
 
 **If the actual board differs** (ESP32-S2/S3/C3, Pico, S3-DevKitN, …), this pin
@@ -35,7 +40,9 @@ Pins are excluded when they are:
 3. **Boot-strapping:** GPIO 0 (boot mode), GPIO 2, GPIO 5, GPIO 12 (MTDI /
    VDD_SPI voltage — a high level at reset can prevent boot), GPIO 15 (MTDO /
    boot logging). ECHO lines in V1 drove 2/5/15 (finding H-03) → eliminated.
-4. **PSRAM:** GPIO 16/17 (WROVER modules) — avoided for board universality.
+4. **PSRAM:** GPIO 16/17 (WROVER modules). **M1B exception:** GPIO 16 is
+   now used for the X2 exit beam — legitimate only on a PSRAM-less WROOM
+   board (assumption A4, checked in §10). GPIO 17 stays untouched.
 5. **Not exposed / not universal:** GPIO 37/38 (absent on most DevKit headers).
 6. **Input-only pins** (GPIO 34–39 have no output driver and no internal
    pull-ups/pull-downs) → used **only** as ECHO/inputs, never as TRIG/LED/servo.
@@ -62,12 +69,15 @@ Pins are excluded when they are:
 | **39** | IN | ECHO — exit (input-only) | exit ECHO (V1: GPIO 5!) | input-only; ADC1_CH3 (VN) |
 | **21** | I2C | LCD SDA | same | default I2C0; external pull-ups per §8 |
 | **22** | I2C | LCD SCL | same | default I2C0 |
-| **14** | — | **RESERVED** — future obstruction sensor input (not populated) | — | JTAG MTMS/HSPI default mux — unused as such; strapping-safe for inputs |
-| **4** | — | spare (broken out on both header sizes) | zone B ECHO (V1) | — |
+| **14** | IN | **Obstruction / close-guard input** (M1B, semantics §12: HIGH = blocked/fault, LOW = clear) — **sensor not populated yet** | — | JTAG MTMS/HSPI default mux — unused as such; strapping-safe for inputs; firmware enables internal pull-up (§12) |
+| **4** | IN | **Beam E2** — entry second passage point, active-LOW (M1B, §9) | zone B ECHO (V1) | internal + external pull-up; an open input reads FREE and can never confirm a count (§9) |
+| **16** | IN | **Beam X2** — exit second passage point, active-LOW (M1B, §9) | — (V1: unused, PSRAM-excluded) | **assumption A4 gate:** valid only on PSRAM-less WROOM (WROVER conflict); header silk label "RX2" |
 
-**Total used: 15 GPIO** (9 outputs, 4 inputs, 2 I2C) + 2 reserved/spare.
+**Total used: 18 GPIO** (9 outputs, 7 inputs, 2 I2C) + 1 spare (GPIO 17).
 Fits both 30-pin and 38-pin DevKit v1 headers (all listed pins are exposed on
-both). GPIO 1/3/6–11/16/17/0/2/5/12/15 are untouched.
+both; GPIO 16 carries the header silk label "RX2"). GPIO 1/3/6–11/17/0/2/5/
+12/15 are untouched; GPIO 16 is adopted under assumption A4 (no PSRAM — the
+§10 gate checks this before wiring).
 
 ### Why this answers the V1 findings
 
@@ -175,34 +185,49 @@ GPIO.** Polarity and fitted values must be photographed/recorded at build time.
 - If the backpack is a 3.3 V-logic variant, wire directly (GPIO 21/22).
 - Keep I2C bus short (≤ 30 cm on a breadboard) to limit bus capacitance.
 
-## 9. Obstruction sensing — requirement & M1A provisional policy
+## 9. Second passage points — IR break-beams (M1B, FR-003)
 
-**Required for FR-005 in any real deployment:** a dedicated obstruction
-detector across the gate closing path (second ultrasonic aimed at the lane, or
-an IR break-beam, or a bumper strip), wired to the **reserved GPIO 14**, with a
-specified reaction: detect ⇒ stop + reverse/hold, sampled fast enough that
-total reaction < 200 ms.
+An ordered confirmation needs a *second* sensing point per direction so a mere
+approach can never be counted (FR-003). The M1B arrangement:
 
-**This hardware does not exist in the current BOM** (we will not invent it).
-Therefore V1A firmware behavior is **provisional and model-only**:
+```
+  ENTRY lane:   E1 (entry HC-SR04, GPIO 18/34)  →  E2 beam (GPIO 4, past the barrier)
+  EXIT lane:    X1 (exit HC-SR04, GPIO 25/39)   →  X2 beam (GPIO 16, outer exit)
+```
 
-- Auto-close happens **only** as a *guarded close*: the closing sweep runs
-  while the **entry ECHO** reads a continuously valid FREE distance; any
-  OCCUPIED / UNKNOWN / FAULT reading during the sweep aborts to `BLOCKED` and
-  re-opens.
-- This is **not** equivalent to an obstruction sensor: beam width, mount angle
-  and update rate are unverified (§10), and a thin object can enter between
-  samples. Clearly marked unsafe for anything but a supervised desk model.
-- If the entry sensor is unhealthy (UNKNOWN), the gate **stays open** (fails
-  open toward traffic safety, fails closed toward security — documented trade-
-  off, see firmware README).
+**Selected technology: 2× digital IR break-beam modules** (active-LOW output:
+OUT is pulled LOW while the beam is broken). Wiring rules:
+
+- E2 → GPIO 4, X2 → GPIO 16 (A4 no-PSRAM gate above; silk label "RX2").
+- Firmware uses `INPUT_PULLUP`; the board adds an **external 10 kΩ pull-up
+  per line to 3.3 V** (same rail, no contention) — BOM §11.
+- Semantics: **LOW = beam broken = occupied; HIGH = free.** An open input
+  (disconnected beam, dead module, missing wire) reads HIGH = free, so a
+  missing second point can **never fabricate a count** — it can only make
+  `PASSAGE_CONFIRMED_*` unreachable, degrading counting back to
+  reconciliation-only (the M1A safe default). The fail direction is
+  deliberate: *toward "do not count"* — the mirror image of the obstruction
+  input's fail direction (§12, toward "do not close").
+- Geometry (mount height, beam width, alignment) is **unverified** — §10/M6.
+  The firmware contract (FREE→OCCUPIED ordering, 50 ms debounce, stale ⇒
+  `UNKNOWN` ⇒ never confirms) is host-tested; see `passage_detector` and
+  `test/test_core`.
+
+**Physical hardware:** the modules are **selected but not procured** (BOM
+§11). Until they are wired, GPIO 4/16 float HIGH (pull-ups) = free forever ⇒
+automatic counting stays disabled by design, exactly as in M1A.
+
+**Wokwi substitute:** Wokwi has no IR-beam part, so the simulation drives the
+same GPIOs with pushbuttons (`simulation/wokwi/README.md`) — identical
+firmware semantics, logical equivalence only.
 
 ## 10. Pre-wiring verification checklist (M1A gate — all open)
 
 - [ ] Exact ESP32 board model/revision photographed and recorded (assumption A1)
 - [ ] Confirm GPIO 6–11 not exposed; confirm which pins exist on the header
 - [ ] Confirm UART0 is GPIO 1/3 on this board (A2)
-- [ ] Confirm no PSRAM (or accept 16/17 exclusion anyway)
+- [ ] Confirm **no PSRAM** — hard requirement since M1B (GPIO 16 = X2 beam, §9),
+      assumption A4: a WROVER board makes this pin map invalid
 - [ ] Measure ECHO divider tap voltage per channel **before** connecting GPIO
 - [ ] Measure LCD backpack pull-up rail voltage
 - [ ] Measure LED resistor values fitted
@@ -211,6 +236,11 @@ Therefore V1A firmware behavior is **provisional and model-only**:
 - [ ] Verify HC-SR04 TRIG accepts 3.3 V HIGH (module batch datasheet)
 - [ ] Photograph final wiring; add schematic + pin-table photo to `docs/hardware/`
 - [ ] Bench-test each sensor alone (M6) before enabling any actuator
+- [ ] Beam modules (§9): confirm **active-LOW** output polarity with a meter;
+      confirm the external 10 kΩ pull-ups are fitted on GPIO 4/16
+- [ ] Obstruction input (§12): confirm external pull-up fitted; with the input
+      **open** the pin must read HIGH (BLOCKED); CLEAR may only be an actively
+      driven LOW
 
 **None of the above has been performed. This design must not be described as
 tested, validated or safe for deployment.**
@@ -237,6 +267,8 @@ Machine-readable copy: [`bom.csv`](bom.csv) (supplier/price columns left
 |---|---:|---|
 | Resistors 20 kΩ + 10 kΩ (E12 nearest OK) | 8 (4 pairs) | ECHO level dividers (§5) — **replaces the unsafe direct wiring** |
 | Resistors 220–330 Ω | 4 | LED series resistors (§7) — V1 values unknown |
+| IR break-beam module (digital, active-LOW) | 2 | **selected in M1B** as second passage points E2/X2 → GPIO 4/16 (§9) — not yet procured |
+| Resistors 10 kΩ (external pull-ups) | 3 | beam lines ×2 (§9) + obstruction input (§12), pull to 3.3 V |
 | Electrolytic capacitor ≥ 470 µF / 10 V + 100 nF ceramic | 1 + 2 | servo supply decoupling (§6) |
 | Regulated 5 V / ≥ 1 A (prefer 2 A) power supply | 1 | servo + sensors (§6); measured budget TBD |
 | Multimeter (verification of §10) | 1 | gate before first power-on |
@@ -245,9 +277,56 @@ Machine-readable copy: [`bom.csv`](bom.csv) (supplier/price columns left
 
 | Item | Qty | Needed by | Effect if absent |
 |---|---:|---|---|
-| Obstruction sensor (IR break-beam or HC-SR04) for gate path → GPIO 14 | 1 | FR-005 full compliance (M6) | firmware keeps provisional guarded-close policy |
-| Second sensing point per direction (2 × HC-SR04 or IR beams) | 2 | FR-003 confirmed passage (M1B/M6) | **no automatic counting** — occupancy changes only via explicit reconciliation |
+| Obstruction sensor (IR break-beam or HC-SR04) for gate path → GPIO 14 (**assigned M1B**, §12) | 1 | FR-005 full compliance (M6) | input unwired reads HIGH = BLOCKED via pull-up ⇒ **no auto-close ever happens physically** (fails safe); lane-guarded close policy (§12) remains as defence in depth |
 | Fuse / power protection for the servo rail | 1 | M6 electrical hardening | desk-model only |
 
 *Prices, suppliers and availability are intentionally empty: quoting without
 supplier evidence would violate the project's evidence rules.*
+
+---
+
+## 12. Obstruction input — electrical assumptions (M1B, GPIO 14)
+
+**Requirement (FR-005):** no automated gate closing may endanger a vehicle or
+a person; a dedicated obstruction detector across the gate closing path with
+detect ⇒ stop/reverse/hold in **< 200 ms** is required in any real deployment.
+
+### 12.1 Firmware contract (implemented, host-tested in M1B)
+
+| # | Rule |
+|---|---|
+| 1 | GPIO 14 is sampled every `loop()` iteration and fed to the barrier FSM as `ObstructionState` (`CLEAR` / `BLOCKED` / `UNKNOWN`). |
+| 2 | Polarity: **HIGH = blocked or faulted, LOW = clear.** |
+| 3 | Bias = **fail-safe pull-up**: firmware enables `INPUT_PULLUP`; the board adds an **external 10 kΩ pull-up to 3.3 V** (BOM §11). Same rail ⇒ no contention. |
+| 4 | An **open input** — broken wire, absent sensor, released NC loop — reads HIGH = BLOCKED ⇒ **can never authorize a close**. CLEAR must be actively driven LOW; loss of the driving electronics therefore also reads BLOCKED. |
+| 5 | CLEAR must be **fresh** (sampled within `OBSTRUCTION_STALE_MS` = 1000 ms) or the barrier sees `UNKNOWN`: close never starts and an in-progress sweep aborts. Unknown never expires into permission. |
+| 6 | Closing needs a fresh CLEAR **both at sweep start and on every tick of the sweep**; BLOCKED/UNKNOWN mid-sweep aborts to a reopen. |
+| 7 | Deliberate fail-direction asymmetry with the beams (§9): an open input fails toward **BLOCKED (never close)** here and toward **FREE (never count)** there — each subsystem fails toward *its* safe action. |
+
+### 12.2 Physical sensor status (honest state)
+
+- The detector itself is **not procured** (BOM §11, planned M6). Neither was it
+  ever populated in V1.
+- **Consequence on the real desk build with the pull-up only:** GPIO 14
+  permanently reads BLOCKED ⇒ the guarded auto-close **never happens
+  physically**. Gate opens on approach and stays open until the M6 sensor
+  lands. This is intended fail-safe behaviour, documented, not a bug.
+- **Defence in depth (unchanged from M1A):** the closing sweep *also* requires
+  the entry ECHO to read a continuously valid FREE for `LANE_CLEAR_CONFIRM_MS`
+  (3 s) and aborts mid-sweep on any OCCUPIED/UNKNOWN/FAULT lane reading. That
+  is a **lane guard, not a certified obstruction sensor**: beam width, mount
+  angle and sample rate are unverified (§10), and a thin object can enter
+  between samples — clearly marked unsafe for anything but a supervised desk
+  model.
+- **Wokwi substitute:** `btn_obs` pulls GPIO 14 to GND through a pushbutton
+  (pressed = loop closed = CLEAR; released = loop open = BLOCKED — the same
+  readout the firmware produces for a broken wire). Logical equivalence only.
+
+### 12.3 Reaction time
+
+Firmware detection-to-stop = the next `loop()` iteration (`loop()` contains no
+`delay()`; the barrier tick aborts the sweep on the same iteration the input is
+read). The **< 200 ms** end-to-end figure is a *measured* M6 item — **NOT
+TESTED** until a physical sensor, its geometry and a scope/photogate test
+exist. The Wokwi simulation exercises the abort *logic* (scenario
+`03-obstruction-guard.yaml`) but validates nothing electrical.

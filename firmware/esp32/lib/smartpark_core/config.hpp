@@ -58,6 +58,23 @@ constexpr uint8_t SENSOR_ZONE_A = 1;
 constexpr uint8_t SENSOR_ZONE_B = 2;
 constexpr uint8_t SENSOR_EXIT = 3;
 
+/**
+ * Second passage points (M1B): digital IR beams, NOT ultrasonic slots — they
+ * carry no distance and are never part of the round-robin schedule. Array
+ * indices for the controller's beam table; the SENSOR_BEAM_* values are the
+ * event sensorIds (outside the SENSOR_COUNT ultrasonic range on purpose).
+ */
+constexpr uint8_t BEAM_COUNT = 2;
+constexpr uint8_t BEAM_ENTRY = 0; // secondary point of the entry lane (GPIO 4)
+constexpr uint8_t BEAM_EXIT = 1;  // secondary point of the exit lane (GPIO 16)
+constexpr uint8_t SENSOR_BEAM_ENTRY = 4; // event sensorId (not a slot index!)
+constexpr uint8_t SENSOR_BEAM_EXIT = 5;
+constexpr uint8_t SENSOR_OBSTRUCTION = 6; // event sensorId for the close guard
+
+/** Raw beam/obstruction level must be stable this long before it is trusted
+ *  (contact chatter, threshold edge chatter). PROVISIONAL. */
+constexpr uint32_t BEAM_DEBOUNCE_MS = 50;
+
 // ---------------- Passage detection ----------------
 /**
  * Minimum time between two APPROACH starts on the same lane (V1's 2.5 s
@@ -66,11 +83,30 @@ constexpr uint8_t SENSOR_EXIT = 3;
 constexpr uint32_t APPROACH_DEBOUNCE_MS = 2500;
 
 /**
+ * After the primary point clears, the SECOND point may still be reached by a
+ * vehicle whose length is shorter than the point spacing (gap crossing). The
+ * detector waits this long for the ordered second-point transition before
+ * declaring CANCELLED (reversal / incomplete passage, FR-003). Only applies
+ * while the second point is a live sensor (VALID_FREE): with the second point
+ * absent (UNKNOWN) there is nothing to wait for and the M1A behavior —
+ * cancel at once — is kept. PROVISIONAL (desk-model scale, M6 calibration).
+ */
+constexpr uint32_t PASSAGE_GRACE_MS = 3000;
+
+/**
+ * An APPROACH may hold through a transient primary failure (stale/timeout),
+ * but if the primary stays non-classifiable for this long the approach is
+ * abandoned (CANCELLED) so a dead sensor cannot pin a lane forever.
+ * PROVISIONAL. Wrap-safe unsigned arithmetic.
+ */
+constexpr uint32_t PASSAGE_UNKNOWN_TOLERANCE_MS = 5000;
+
+/**
  * A confirmed passage requires an ordered second sensing point
- * (requirements FR-003). With the current 4-sensor hardware the second point
- * does not exist: the controller feeds UNKNOWN, so CONFIRMED is unreachable
- * and occupancy never changes automatically. This is a documented hardware
- * limitation, not a missing feature (docs/hardware/pinmap-v2.md §9/§11).
+ * (requirements FR-003). Since M1B the second points exist (IR beams on
+ * GPIO 4/16); until they are wired the controller feeds UNKNOWN and
+ * CONFIRMED stays unreachable — approach alone NEVER counts (see
+ * docs/hardware/pinmap-v2.md §9/§11).
  */
 
 // ---------------- Barrier ----------------
@@ -85,9 +121,18 @@ constexpr uint8_t BARRIER_CLOSED_ANGLE = 0;
  * start, and any non-FREE reading during the sweep aborts it (BLOCKED ->
  * reopen). This replaces V1's blind delay(2000) close (finding F-04).
  * PROVISIONAL: the entry beam is not a certified obstruction sensor
- * (docs/hardware/pinmap-v2.md §9).
+ * (docs/hardware/pinmap-v2.md §12.2).
  */
 constexpr uint32_t LANE_CLEAR_CONFIRM_MS = 3000;
+
+/**
+ * The obstruction input (M1B, GPIO 14) must have been sampled within this
+ * window to be trusted; otherwise the barrier sees ObstructionState::UNKNOWN
+ * which can never authorize a closing sweep. The glue feeds it every loop(),
+ * so >1 s without a sample means the loop itself stalled. Reuses the sensor
+ * staleness scale deliberately (same "silent == unknown" rule, FR-001).
+ */
+constexpr uint32_t OBSTRUCTION_STALE_MS = SENSOR_STALE_MS;
 
 // ---------------- Display / indicators ----------------
 constexpr uint32_t LCD_INTERVAL_MS = 500;

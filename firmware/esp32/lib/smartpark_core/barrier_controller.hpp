@@ -4,7 +4,7 @@
  *
  * States (exactly the requirement set):
  *   CLOSED → OPENING → OPEN → CLOSING → CLOSED
- *   BLOCKED  — a close is wanted but the lane is not observably clear
+ *   BLOCKED  — a close is wanted but a guard input is not observably clear
  *   FAULT    — actuator reported a problem at attach time (latched)
  *   MANUAL   — reserved for future local operator control (unreachable in M1A)
  *
@@ -12,10 +12,16 @@
  *  - No `delay()`: sweeps advance by BARRIER_STEP_MS/BARRIER_STEP_DEG inside
  *    tick(); all timing is wrap-safe unsigned millis() arithmetic (F-05).
  *  - NO blind timed close (V1 F-04): a closing sweep starts only after the
- *    entry lane read a *valid* FREE for LANE_CLEAR_CONFIRM_MS, and ANY
- *    non-FREE reading (OCCUPIED/UNKNOWN/FAULT/INIT) during the sweep aborts
- *    it: BLOCKED → auto-reopen (F-04 provisional guarded close; this is NOT
- *    a certified obstruction sensor — docs/hardware/pinmap-v2.md §9).
+ *    entry lane read a *valid* FREE for LANE_CLEAR_CONFIRM_MS AND the
+ *    obstruction input reports a fresh CLEAR; ANY non-FREE lane reading or
+ *    non-CLEAR obstruction (OCCUPIED/BLOCKED/UNKNOWN/FAULT) during the sweep
+ *    aborts it: BLOCKED → auto-reopen (guarded close; this is NOT a
+ *    certified obstruction sensor — docs/hardware/pinmap-v2.md §12.2).
+ *  - UNKNOWN safety inputs can never authorize a close: ObstructionState::
+ *    UNKNOWN (never sampled, stale, or unreadable) behaves like BLOCKED for
+ *    every close decision. With the fail-safe wiring (pull-up; beam break or
+ *    broken wire reads HIGH = BLOCKED) the input fails toward "refuse to
+ *    close".
  *  - A lane that never reports valid FREE leaves the gate OPEN (fails open
  *    toward traffic safety; documented trade-off).
  *  - Pure logic (native-testable); the hardware glue applies `angle()`.
@@ -49,6 +55,27 @@ inline const char* toString(BarrierState s) {
   return "INVALID_STATE";
 }
 
+/**
+ * Close-guard input (M1B, GPIO 14). Semantics chosen so the *hardware*
+ * wiring is fail-safe: CLEAR is only reported when the input is actively
+ * driven low by a healthy sensor; broken wire / no sensor / stalled loop
+ * all read BLOCKED or UNKNOWN and therefore refuse to close.
+ */
+enum class ObstructionState : uint8_t {
+  CLEAR = 0, // path observably clear (fresh sample)
+  BLOCKED,   // object in the closing path, or input faulted high
+  UNKNOWN,   // never sampled, stale, or not yet classified
+};
+
+inline const char* toString(ObstructionState s) {
+  switch (s) {
+    case ObstructionState::CLEAR:   return "CLEAR";
+    case ObstructionState::BLOCKED: return "BLOCKED";
+    case ObstructionState::UNKNOWN: return "UNKNOWN";
+  }
+  return "INVALID_STATE";
+}
+
 class BarrierController {
 public:
   BarrierController();
@@ -58,8 +85,8 @@ public:
 
   /**
    * Ask the gate to close. Executes only when the lane is observably clear
-   * (LANE_CLEAR_CONFIRM_MS); otherwise the FSM surfaces BLOCKED. Ignored in
-   * FAULT/MANUAL.
+   * (LANE_CLEAR_CONFIRM_MS) and the obstruction input is CLEAR; otherwise
+   * the FSM surfaces BLOCKED. Ignored in FAULT/MANUAL.
    */
   void requestClose(uint32_t nowMs);
 
@@ -75,17 +102,21 @@ public:
    * gate, so a stale close/abort request must not fire after the release).
    * exitManual(nowMs) resolves the physical position deterministically:
    * fully open → OPEN, fully closed → CLOSED, mid-sweep → resume the
-   * guarded close (lane not observably clear ⇒ BLOCKED → reopen: fails
-   * open). The reported state therefore always matches `angle()`.
+   * guarded close (lane or obstruction not observably clear ⇒ BLOCKED →
+   * reopen: fails open). The reported state therefore always matches
+   * `angle()`.
    */
   void setManual();
   void exitManual(uint32_t nowMs);
 
   /**
    * Advance the FSM.
-   * @param laneEntry effective entry-lane state (stale-aware UNKNOWN ok)
+   * @param nowMs       current millis()
+   * @param laneEntry   effective entry-lane state (stale-aware UNKNOWN ok)
+   * @param obstruction close-guard input (stale-aware UNKNOWN ok; never
+   *                    omitted — there is no permissive default on purpose)
    */
-  void tick(uint32_t nowMs, SensorState laneEntry);
+  void tick(uint32_t nowMs, SensorState laneEntry, ObstructionState obstruction);
 
   BarrierState state() const { return state_; }
 

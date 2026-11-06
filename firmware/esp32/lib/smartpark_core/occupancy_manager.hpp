@@ -2,14 +2,16 @@
 /**
  * SmartPark-IoT V2 — occupancy state (FR-004 bounds, FR-007/NFR-004 honesty).
  *
- * - Boots UNKNOWN with reason NO_PERSISTED_STATE: persistence (NVS) lands in
- *   M1B, and NFR-004 forbids inventing free spaces after a reboot. While
- *   UNKNOWN the controller defers admission (FR-004) — intended, not a bug.
+ * - Boots UNKNOWN with reason NO_PERSISTED_STATE when no valid persisted
+ *   record exists (M1B: NVS), and NFR-004 forbids inventing free spaces
+ *   after a reboot. While UNKNOWN the controller defers admission (FR-004) —
+ *   intended, not a bug. A CRC-valid record is restored via restore() and
+ *   flagged as recovered (isRestored()), never as re-verified (FR-007).
  * - Count is bounded to [0, CAPACITY]. Out-of-range attempts are REJECTED and
  *   counted — never silently clamped (V1 finding F-10).
- * - In M1A the count changes only through reconcile() (explicit operator/
- *   system action) or a CONFIRMED passage (unreachable with current
- *   hardware). Approach never changes it (FR-003).
+ * - The count changes only through reconcile() (explicit operator/system
+ *   action), restore() (validated persistence) or a CONFIRMED passage
+ *   (ordered two-point sequence, FR-003). Approach never changes it.
  */
 #include <stdint.h>
 #include "config.hpp"
@@ -28,10 +30,11 @@ public:
   OccupancyManager()
       : status_(OccupancyStatus::UNKNOWN),
         reason_(OccUnknownReason::NO_PERSISTED_STATE), count_(0),
-        rejected_(0) {}
+        rejected_(0), restored_(false) {}
 
   /** Explicit reconciliation. Returns false (and counts a rejection) when
-   *  newCount > CAPACITY — no silent clamping (F-10). */
+   *  newCount > CAPACITY — no silent clamping (F-10). Clears the restored
+   *  flag: an explicit reconcile supersedes any recovered value. */
   bool reconcile(uint8_t newCount) {
     if (newCount > static_cast<uint8_t>(CAPACITY)) {
       ++rejected_;
@@ -40,8 +43,25 @@ public:
     count_ = newCount;
     status_ = OccupancyStatus::KNOWN;
     reason_ = OccUnknownReason::NONE;
+    restored_ = false;
     return true;
   }
+
+  /**
+   * Restore a count from a *validated* persisted record (M1B, FR-007).
+   * Same range check as reconcile(); additionally marks the value as
+   * recovered — callers must be able to tell "restored" from "re-verified"
+   * (never present an unverified recovery as unquestionably accurate).
+   */
+  bool restore(uint8_t newCount) {
+    if (!reconcile(newCount)) return false;
+    restored_ = true;
+    return true;
+  }
+
+  /** True when the current KNOWN count came from persistence, not from an
+   *  explicit reconcile or a confirmed passage. */
+  bool isRestored() const { return isKnown() && restored_; }
 
   /**
    * Apply a *confirmed* passage delta (+1 entry / −1 exit).
@@ -67,6 +87,7 @@ public:
     status_ = OccupancyStatus::UNKNOWN;
     reason_ = OccUnknownReason::NO_PERSISTED_STATE;
     count_ = 0;
+    restored_ = false;
   }
 
   bool isKnown() const { return status_ == OccupancyStatus::KNOWN; }
@@ -88,6 +109,7 @@ private:
   OccUnknownReason reason_;
   uint8_t count_;
   uint32_t rejected_;
+  bool restored_; // count came from a persisted record (FR-007 honesty)
 };
 
 } // namespace smartpark

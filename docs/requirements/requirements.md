@@ -14,11 +14,11 @@ refactor toward them with a compiling starting point.
 |---|---|---|
 | FR-001 | Read each sensor without uncontrolled cross-talk; label invalid/timeout measurements `UNKNOWN` | 🟡 M1A: independent TRIGs + staggered slots + `UNKNOWN`/`FAULT` filter states implemented and unit-tested; cross-talk elimination unverified on hardware (V1: shared trigger + "999" treated as free) |
 | FR-002 | Filter noise with configurable hysteresis and consecutive stable readings | 🟡 M1A: hysteresis (15/30 cm) + 3-stable-sample filter in `config.hpp`/`sensor_filter`, unit-tested; thresholds provisional until M6 calibration (V1: single raw samples vs fixed thresholds) |
-| FR-003 | Confirm passage direction-aware; never count mere approach as passage | 🟡 M1A: approach never counts (unit-tested); ordered two-point confirmation implemented but **unreachable with current hardware** — second beam required (pinmap §11). Count changes only via explicit reconcile until then (V1: increments on approach within 15 cm) |
+| FR-003 | Confirm passage direction-aware; never count mere approach as passage | 🟡 M1A→M1B: approach never counts; ordered two-point FSM **v2** (confirm only on ordered second-point hit or second point free at approach start; reversal cancels; primary-loss tolerance; entry/exit independent) unit-tested — 18 M1B tests on top of the 41 M1A ones. Second points assigned to IR beams on GPIO 4/16 (pinmap §9): **selected but not procured** — until wired they read FREE, so automatic counting stays reconciliation-only by design (V1: increments on approach within 15 cm) |
 | FR-004 | Reject/defer admission when capacity is exhausted or availability unknown | 🟡 M1A: admission defers when occupancy `UNKNOWN` and denies when full (one deduplicated event + visible LCD refusal, unit-tested); full semantics await persistence (V1: rejects full only) |
-| FR-005 | Gate finite-state machine: CLOSED, OPENING, OPEN, CLOSING, BLOCKED, FAULT, MANUAL; no unsafe timed close | 🟡 M1A: full FSM + guarded provisional close implemented and unit-tested; `BLOCKED`/`FAULT`/`MANUAL` reachable, obstruction hardware still absent (V1: blocking delays, blind timed close) |
+| FR-005 | Gate finite-state machine: CLOSED, OPENING, OPEN, CLOSING, BLOCKED, FAULT, MANUAL; no unsafe timed close | 🟡 M1A→M1B: full FSM + guarded close; M1B adds the obstruction input (GPIO 14): close needs a **fresh CLEAR** at sweep start *and* on every tick, `UNKNOWN`/`BLOCKED` never authorize closing, mid-sweep violation aborts to reopen, fail-safe pull-up bias (pinmap §12). Obstruction *sensor* still absent (V1: blocking delays, blind timed close) |
 | FR-006 | Local sensing and safe gate logic with Wi-Fi/backend unavailable | ✅ trivially true today (no network code); must remain true in M2+ |
-| FR-007 | Persist counters and event queue across expected restarts; define crash consistency | 🟡 M1A: boots `UNKNOWN` instead of inventing free spaces (unit-tested); NVS persistence itself = M1B (V1: counter reset to 0) |
+| FR-007 | Persist counters and event queue across expected restarts; define crash consistency | 🟡 M1A→M1B: NVS persistence implemented (`persistence.*` 16-byte record: magic/version/CAPACITY/reserved + CRC-32) — save on count change, boot restore → `KNOWN` + `isRestored()` + `OCCUPANCY_RESTORED`; invalid/corrupt record → stays `UNKNOWN`, never clamped (unit-tested incl. full validation battery). Physical power-cycle evidence = M6 (V1: counter reset to 0) |
 | FR-008 | Publish validated occupancy events + heartbeat over MQTT with durable IDs and sequence numbers | ⬜ M2 |
 | FR-009 | Backend deduplicates repeated events; records ingestion failures | ⬜ M3 |
 | FR-010 | Authenticated dashboard: facility, zone, capacity, confidence, device health, history, alerts | ⬜ M4 |
@@ -32,7 +32,7 @@ refactor toward them with a compiling starting point.
 | NFR-001 | Local gate safety independent of network connectivity (mandatory) | design invariant from M1 onward |
 | NFR-002 | Healthy LAN: 95% of confirmed events visible on dashboard within 2 s | ⬜ M4/M6 measurement |
 | NFR-003 | No duplicate database rows after at-least-once replay | ⬜ M3 |
-| NFR-004 | Reboot/reconnect recovers without inventing free spaces | 🟡 M1A: boot = `UNKNOWN` + deferred admission (unit-tested); recovery path (persistence/reconcile) M1B/M3 |
+| NFR-004 | Reboot/reconnect recovers without inventing free spaces | 🟡 M1A→M1B: boot = `UNKNOWN` unless a **CRC-valid** NVS record restores the exact count (flagged recovered, never re-verified); corrupt/out-of-range records are rejected visibly — unit-tested; physical power-cycle evidence = M6 |
 | NFR-005 | Local simulation reproducible with documented commands (Windows 11 + WSL2 or Linux) | ⬜ M5 |
 | NFR-006 | API and broker reject unauthorized access; secrets never committed | partially: `.gitignore`/`.env.example` in M0; enforcement from M2/M3 |
 | NFR-007 | CI validates builds/tests/formatting/migrations before merging | 🟡 M1A: firmware CI = compile + native tests (warnings as errors) + cppcheck; migrations from M3 |
@@ -42,8 +42,8 @@ refactor toward them with a compiling starting point.
 
 | Requirement | Required evidence |
 |---|---|
-| FR-003 | Approach / reverse / crossing test logs with count invariants |
-| FR-005 | Barrier obstruction tests; manual recovery record |
+| FR-003 | Approach / reverse / crossing test logs with count invariants (native tests + Wokwi scenario logs) |
+| FR-005 | Barrier obstruction tests (native + Wokwi `03-obstruction-guard`); manual recovery record |
 | FR-006 | Broker/router disconnect demo with local operation |
 | FR-007 | Power-cycle/reboot recovery report |
 | FR-009 | Replay same event 100× → exactly one stored logical event |

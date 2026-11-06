@@ -1,0 +1,52 @@
+# M1B scenario 2 — successful entry: ordered two-point confirmation drives the
+# count; approach alone never counts; the guarded close requires the safety
+# loop (obstruction input) to be CLEAR for the whole window + sweep.
+name: 'M1B entry passage (two-point confirm + guarded close)'
+version: 1
+author: 'SmartPark-IoT'
+
+steps:
+  - wait-serial: 'SmartPark-IoT V2 (M1B) boot'
+  - write-serial: 'R 2\n'
+  - wait-serial: 'OCCUPANCY_RECONCILED'
+
+  # 1) Vehicle enters the entry sensor zone (< 15 cm, 3 stable slot samples)
+  - set-control:
+      part-id: u1
+      name: distance
+      value: 5
+  - wait-serial: 'ENTRY_APPROACH'
+  # The approach opens the gate but NEVER changes the count (FR-003).
+  # 1200 ms > 675 ms sweep, so the query lands after the sweep is done.
+  - delay: 1200ms
+  - write-serial: '?\n'
+  - wait-serial: 'STATUS occ=KNOWN count=2 free=4 gate=OPEN obstruction=BLOCKED'
+
+  # 2) Vehicle reaches second point E2 (beam broken -> input pulled LOW);
+  #    first point is still occupied => ordered sequence confirms immediately
+  - set-control:
+      part-id: btn_e2
+      name: pressed
+      value: 1
+  - wait-serial: 'PASSAGE_CONFIRMED_ENTRY'
+  - write-serial: '?\n'
+  - wait-serial: 'STATUS occ=KNOWN count=3 free=3'
+
+  # 3) Vehicle clears the lane and the safety loop is held closed (CLEAR):
+  #    lane FREE commits ~1 s (3 slot samples) + 3000 ms confirm window +
+  #    675 ms sweep < 6000 ms budget
+  - set-control:
+      part-id: btn_e2
+      name: pressed
+      value: 0
+  - set-control:
+      part-id: u1
+      name: distance
+      value: 400
+  - set-control:
+      part-id: btn_obs
+      name: pressed
+      value: 1
+  - delay: 6000ms
+  - write-serial: '?\n'
+  - wait-serial: 'STATUS occ=KNOWN count=3 free=3 gate=CLOSED obstruction=CLEAR'

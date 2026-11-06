@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "author": "SmartPark-IoT",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "wokwi-esp32-devkit-v1", "id": "esp", "top": 0, "left": 60, "attrs": {} },
+
+    { "type": "wokwi-hc-sr04", "id": "u1", "top": -40, "left": -220, "attrs": {} },
+    { "type": "wokwi-hc-sr04", "id": "u2", "top": 60, "left": -220, "attrs": {} },
+    { "type": "wokwi-hc-sr04", "id": "u3", "top": 160, "left": -220, "attrs": {} },
+    { "type": "wokwi-hc-sr04", "id": "u4", "top": 260, "left": -220, "attrs": {} },
+
+    { "type": "wokwi-pushbutton", "id": "btn_e2", "top": -120, "left": -140, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "btn_x2", "top": -120, "left": -90, "attrs": {} },
+    { "type": "wokwi-pushbutton", "id": "btn_obs", "top": -120, "left": -40, "attrs": {} },
+
+    { "type": "wokwi-resistor", "id": "pu_e2", "top": -180, "left": -136, "rotate": 90, "attrs": { "value": "10000" } },
+    { "type": "wokwi-resistor", "id": "pu_x2", "top": -180, "left": -86, "rotate": 90, "attrs": { "value": "10000" } },
+    { "type": "wokwi-resistor", "id": "pu_obs", "top": -180, "left": -36, "rotate": 90, "attrs": { "value": "10000" } },
+
+    { "type": "wokwi-lcd1602", "id": "lcd", "top": -80, "left": 220, "attrs": { "pins": "i2c", "i2cAddress": "0x27" } },
+    { "type": "wokwi-servo", "id": "servo", "top": 60, "left": 250, "attrs": {} },
+
+    { "type": "wokwi-led", "id": "led_free", "top": -160, "left": 340, "attrs": { "color": "green", "label": "SLOTS" } },
+    { "type": "wokwi-led", "id": "led_full", "top": -160, "left": 400, "attrs": { "color": "red", "label": "FULL" } },
+    { "type": "wokwi-led", "id": "led_zone_a", "top": -160, "left": 460, "attrs": { "color": "yellow", "label": "ZONE-A" } },
+    { "type": "wokwi-led", "id": "led_zone_b", "top": -160, "left": 520, "attrs": { "color": "yellow", "label": "ZONE-B" } },
+
+    { "type": "wokwi-resistor", "id": "r_free", "top": -80, "left": 345, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_full", "top": -80, "left": 405, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_zone_a", "top": -80, "left": 465, "rotate": 90, "attrs": { "value": "220" } },
+    { "type": "wokwi-resistor", "id": "r_zone_b", "top": -80, "left": 525, "rotate": 90, "attrs": { "value": "220" } }
+  ],
+  "connections": [
+    [ "esp:TX0", "$serialMonitor:RX", "", [] ],
+    [ "esp:RX0", "$serialMonitor:TX", "", [] ],
+
+    [ "u1:VCC", "esp:VIN", "red", [] ],
+    [ "u1:GND", "esp:GND.2", "black", [] ],
+    [ "u1:TRIG", "esp:D18", "green", [] ],
+    [ "u1:ECHO", "esp:D34", "yellow", [] ],
+
+    [ "u2:VCC", "esp:VIN", "red", [] ],
+    [ "u2:GND", "esp:GND.2", "black", [] ],
+    [ "u2:TRIG", "esp:D19", "green", [] ],
+    [ "u2:ECHO", "esp:D35", "yellow", [] ],
+
+    [ "u3:VCC", "esp:VIN", "red", [] ],
+    [ "u3:GND", "esp:GND.2", "black", [] ],
+    [ "u3:TRIG", "esp:D23", "green", [] ],
+    [ "u3:ECHO", "esp:VP", "yellow", [] ],
+
+    [ "u4:VCC", "esp:VIN", "red", [] ],
+    [ "u4:GND", "esp:GND.2", "black", [] ],
+    [ "u4:TRIG", "esp:D25", "green", [] ],
+    [ "u4:ECHO", "esp:VN", "yellow", [] ],
+
+    [ "btn_e2:1.l", "esp:D4", "orange", [] ],
+    [ "btn_e2:2.l", "esp:GND.1", "black", [] ],
+    [ "pu_e2:1", "esp:D4", "orange", [] ],
+    [ "pu_e2:2", "esp:3V3", "red", [] ],
+
+    [ "btn_x2:1.l", "esp:RX2", "orange", [] ],
+    [ "btn_x2:2.l", "esp:GND.1", "black", [] ],
+    [ "pu_x2:1", "esp:RX2", "orange", [] ],
+    [ "pu_x2:2", "esp:3V3", "red", [] ],
+
+    [ "btn_obs:1.l", "esp:D14", "violet", [] ],
+    [ "btn_obs:2.l", "esp:GND.1", "black", [] ],
+    [ "pu_obs:1", "esp:D14", "violet", [] ],
+    [ "pu_obs:2", "esp:3V3", "red", [] ],
+
+    [ "servo:PWM", "esp:D13", "purple", [] ],
+    [ "servo:V+", "esp:VIN", "red", [] ],
+    [ "servo:GND", "esp:GND.2", "black", [] ],
+
+    [ "lcd:GND", "esp:GND.1", "black", [] ],
+    [ "lcd:VCC", "esp:3V3", "red", [] ],
+    [ "lcd:SDA", "esp:D21", "green", [] ],
+    [ "lcd:SCL", "esp:D22", "yellow", [] ],
+
+    [ "esp:D26", "led_free:A", "green", [] ],
+    [ "led_free:C", "r_free:1", "green", [] ],
+    [ "r_free:2", "esp:GND.1", "black", [] ],
+
+    [ "esp:D27", "led_full:A", "green", [] ],
+    [ "led_full:C", "r_full:1", "green", [] ],
+    [ "r_full:2", "esp:GND.1", "black", [] ],
+
+    [ "esp:D32", "led_zone_a:A", "green", [] ],
+    [ "led_zone_a:C", "r_zone_a:1", "green", [] ],
+    [ "r_zone_a:2", "esp:GND.1", "black", [] ],
+
+    [ "esp:D33", "led_zone_b:A", "green", [] ],
+    [ "led_zone_b:C", "r_zone_b:1", "green", [] ],
+    [ "r_zone_b:2", "esp:GND.1", "black", [] ]
+  ],
+  "dependencies": {}
+}

@@ -1,8 +1,8 @@
 # Architecture overview
 
-**Status:** target architecture for the SmartPark-IoT MVP; only the ESP32 edge
-controller exists today (M0 baseline — see the component status table).
-This document follows the project
+**Status:** target architecture for the SmartPark-IoT MVP; the ESP32 edge
+controller exists today (M1A modular firmware + M1B persistence/simulation —
+see the component status table). This document follows the project
 [blueprint](../SMARTPARK_V2_COMPLETE_PROJECT_BLUEPRINT.md) §5.
 
 ## Components and data flow
@@ -23,7 +23,7 @@ flowchart TD
 
 | Component | Milestone | Status |
 |---|---|---|
-| ESP32 edge controller (sensing, local safety, display) | M0 baseline → M1 rework | 🟡 M1A: modular firmware + native tests merged into `main` working tree; hardware unverified |
+| ESP32 edge controller (sensing, local safety, display) | M0 baseline → M1 rework | 🟡 M1B: modular firmware, 59 native tests, NVS occupancy persistence, Wokwi simulation project (`simulation/wokwi/`, lint green; scenario runs pending token); hardware unverified |
 | Persistent outbound event queue | M2 | ⬜ planned (in-memory dedup queue exists, M1A) |
 | Wi-Fi + MQTT transport (topics, IDs, heartbeat) | M2 | ⬜ planned |
 | Mosquitto broker | M2 | ⬜ planned |
@@ -32,7 +32,7 @@ flowchart TD
 | Device simulator | M5 | ⬜ planned |
 | Flutter app | M10 (optional) | ⬜ planned |
 
-## Firmware architecture (as built in M1A)
+## Firmware architecture (as built in M1A, extended in M1B)
 
 The edge controller is split by dependency direction: **pure logic never
 includes Arduino headers**, so the entire decision path compiles and runs on
@@ -42,14 +42,16 @@ the host (`pio test -e native`).
 flowchart LR
     subgraph HAL["src/ (ESP32 only)"]
       RD[sensor_reader<br/>independent TRIG + bounded pulseIn]
-      GL[main.cpp<br/>millis scheduler, servo/LCD/LED/serial]
+      NS[nvs_store<br/>Preferences wrapper]
+      GL[main.cpp<br/>millis scheduler, servo/LCD/LED/serial, console]
     end
     subgraph CORE["lib/smartpark_core (pure C++11, unit-tested)"]
       PC[parking_controller<br/>orchestration + policy]
       SF[sensor_filter<br/>hysteresis / UNKNOWN / FAULT]
-      PD[passage_detector<br/>approach FSM]
+      PD[passage_detector<br/>two-point passage FSM v2]
       OM[occupancy_manager<br/>bounded count / UNKNOWN]
-      BC[barrier_controller<br/>gate FSM + guarded close]
+      BC[barrier_controller<br/>gate FSM + obstruction-guarded close]
+      PS[persistence<br/>16-byte CRC-32 record]
       EQ[event_queue<br/>dedup + seq]
       DM[display_manager<br/>16-char LCD lines]
     end
@@ -61,6 +63,7 @@ flowchart LR
     PC --> BC
     PC --> EQ
     PC --> DM
+    NS -->|bytes| PS
     GL -->|drain| EQ
     GL -->|view| DM
 ```
@@ -77,16 +80,12 @@ Design rules (enforced by review + the `-Werror` native build):
   touching policy code.
 - **Hardware availability is a policy input, not an assumption.** Missing
   passage/obstruction hardware appears as `UNKNOWN` feed or documented
-  provisional behavior (`pinmap-v2.md` §9), never as invented signals.
+  behavior (`pinmap-v2.md` §9 beams, §12 obstruction), never as invented
+  signals — unwired beam inputs read FREE (never count), an unwired
+  obstruction input reads BLOCKED (never close).
 
 Per-module responsibilities and their test coverage are listed in
 [`firmware/esp32/README.md`](../../firmware/esp32/README.md).
-| Wi-Fi + MQTT transport (topics, IDs, heartbeat) | M2 | ⬜ planned |
-| Mosquitto broker | M2 | ⬜ planned |
-| FastAPI backend + PostgreSQL | M3 | ⬜ planned |
-| SvelteKit dashboard | M4 | ⬜ planned |
-| Device simulator | M5 | ⬜ planned |
-| Flutter app | M10 (optional) | ⬜ planned |
 
 ## Ownership and trust boundaries
 
@@ -128,8 +127,8 @@ heartbeat*, never raw actuator control from the internet. Operator commands
 | Wi-Fi or broker down | Local operation continues; events queue durably; dashboard shows `OFFLINE`/stale, not fabricated freshness |
 | Duplicate/reordered MQTT delivery | Idempotent ingest — exactly one stored logical event |
 | Backend/DB down | API reports unavailable; device unaffected |
-| ESP32 reboot | Safe startup; occupancy recovered from persistence or marked `UNKNOWN` until reconciled |
-| Barrier obstruction | Gate FSM stops/reverses or latches `FAULT` (M1 design) — never blind timed close |
+| ESP32 reboot | Safe startup; occupancy restored from a **CRC-valid** NVS record (flagged recovered) or marked `UNKNOWN` until reconciled (M1B) |
+| Barrier obstruction | Obstruction input (GPIO 14) fails toward BLOCKED (pull-up, pinmap §12): close never starts without a fresh CLEAR and a mid-sweep BLOCKED aborts to reopen; lane-guarded close retained as defence in depth — never blind timed close |
 
 ## Offline-first rationale
 
