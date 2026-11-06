@@ -1,10 +1,12 @@
 # M1B — Two-point passage detection, NVS persistence, obstruction safety, simulation
 
 **Status: complete — committed, pushed, CI-green, Wokwi scenarios 3/3 green** ·
-date: 2026-11-06 · branch: `main` (no branches created; commit `9fab481`
-pushed with maintainer approval, [CI run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700)
-all 3 jobs green; all 3 Wokwi scenarios executed green locally on 2026-11-06 —
-§3/§5 row 6.4) · follows [m1a.md](m1a.md), supersedes nothing.
+date: 2026-11-06 · branch: `main` (no branches created; commits pushed with
+maintainer approval: `9fab481` feature + `8bfc2cb`/`8767b2f` records — HEAD
+`8767b2f`; [CI run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700)
+for `9fab481` and [CI run #4](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42261528199)
+for `8767b2f` all green; all 3 Wokwi scenarios executed green locally on
+2026-11-06 — §3/§5 row 6.4) · follows [m1a.md](m1a.md), supersedes nothing.
 
 Scope per the M1B task brief and [roadmap](roadmap.md) M1 steps 5–8: reliable
 two-point passage detection, persistence, barrier obstruction safety, extended
@@ -137,7 +139,7 @@ are explicitly not execution evidence.
 | **Task 5 — extended native tests** |
 | 5.1 | Whole suite green | PASS | `pio test -e native` → **59/59** |
 | 5.2 | All 41 M1A tests preserved unchanged | PASS | suite output lists every M1A case; 18 additions only |
-| 5.3 | CI runs the same suite; workflow unchanged (no job that cannot run) | PASS | [run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700) all 3 jobs green for `9fab481` (compile + 59/59 on ubuntu g++ + cppcheck); `.github/workflows/firmware-ci.yml` untouched |
+| 5.3 | CI runs the same suite; workflow unchanged (no job that cannot run) | PASS | [run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700) all 3 jobs green for `9fab481` (compile + 59/59 on ubuntu g++ + cppcheck); re-confirmed by [run #4](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42261528199) for HEAD `8767b2f`; `.github/workflows/firmware-ci.yml` untouched |
 | **Task 6 — Wokwi simulation** |
 | 6.1 | `wokwi.toml` points at the real `firmware.bin`/`firmware.elf`; diagram parts/pins correct | PASS | `wokwi-cli lint --offline --warnings-as-errors` → exit 0, 0 warnings |
 | 6.2 | Every substitution documented (IR beams → pushbuttons, safety loop → button, ECHO divider not modeled) | PASS | `simulation/wokwi/README.md` |
