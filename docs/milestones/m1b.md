@@ -1,9 +1,9 @@
 # M1B — Two-point passage detection, NVS persistence, obstruction safety, simulation
 
-**Status: complete in working tree — NOT committed (awaiting maintainer approval)** ·
-date: 2026-11-04 · branch: `main` (no branches created; working tree sits on
-top of `origin/main = d35ad1d`, **0 new commits**) · follows
-[m1a.md](m1a.md), supersedes nothing.
+**Status: complete — committed, pushed and CI-green** · date: 2026-11-06 ·
+branch: `main` (no branches created; commit `9fab481` pushed with maintainer
+approval, [CI run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700)
+all 3 jobs green) · follows [m1a.md](m1a.md), supersedes nothing.
 
 Scope per the M1B task brief and [roadmap](roadmap.md) M1 steps 5–8: reliable
 two-point passage detection, persistence, barrier obstruction safety, extended
@@ -55,6 +55,7 @@ Each subsystem fails toward *its* safe action (§12.1 rule 7).
 | `pio run -d firmware/esp32 -e esp32dev` | **SUCCESS**, exit 0, **0 warnings** (`-Wall -Wextra`), RAM 6.9% (22 628 B), Flash 24.1% (316 025 B) |
 | `pio test -d firmware/esp32 -e native` | **PASSED — 59/59**, exit 0, suite 2.49 s |
 | `pio check -d firmware/esp32 --fail-on-defect=medium` | **PASSED**, 0 high / 0 medium / **3 low** — identical to the M1A baseline (library `missingOverride` + Arduino `setup`/`loop` `unusedFunction`) |
+| GitHub Actions [run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700) for `9fab481` | **SUCCESS — all 3 jobs green** (ESP32 compile 52 s, native tests 32 s on ubuntu g++ = 59/59, cppcheck 20 s) |
 | `wokwi-cli lint simulation/wokwi --offline --warnings-as-errors` | **exit 0** — 0 warnings, 1 info (`wokwi-esp32-devkit-v1` is an undocumented part type; expected) |
 | `wokwi-cli --scenario …` (3 scenarios) | **NOT RUN — `WOKWI_CLI_TOKEN` not provided** (see §4/§5) |
 | `git branch -a` | only `main` (+ `origin/main`) |
@@ -122,7 +123,7 @@ Wokwi token. Rows marked *design*/*code* are explicitly not execution evidence.
 | **Task 5 — extended native tests** |
 | 5.1 | Whole suite green | PASS | `pio test -e native` → **59/59** |
 | 5.2 | All 41 M1A tests preserved unchanged | PASS | suite output lists every M1A case; 18 additions only |
-| 5.3 | CI runs the same suite; workflow unchanged (no job that cannot run) | PASS (config) | `.github/workflows/firmware-ci.yml` untouched; last green run = [M1A run #2](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932); **M1B push/CI run pending approval** |
+| 5.3 | CI runs the same suite; workflow unchanged (no job that cannot run) | PASS | [run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700) all 3 jobs green for `9fab481` (compile + 59/59 on ubuntu g++ + cppcheck); `.github/workflows/firmware-ci.yml` untouched |
 | **Task 6 — Wokwi simulation** |
 | 6.1 | `wokwi.toml` points at the real `firmware.bin`/`firmware.elf`; diagram parts/pins correct | PASS | `wokwi-cli lint --offline --warnings-as-errors` → exit 0, 0 warnings |
 | 6.2 | Every substitution documented (IR beams → pushbuttons, safety loop → button, ECHO divider not modeled) | PASS | `simulation/wokwi/README.md` |
@@ -138,7 +139,7 @@ Wokwi token. Rows marked *design*/*code* are explicitly not execution evidence.
 | 7.6 | This checklist | PASS | — |
 | **Milestone hygiene** |
 | H.1 | Work only on `main`, no branches | PASS | `git branch -a` |
-| H.2 | No commit / no push | PASS | HEAD = `origin/main` = `d35ad1d`, 0 new commits |
+| H.2 | No commit / no push **before maintainer approval** | PASS | working phase had 0 new commits; approval given → `9fab481` pushed (see header) |
 | H.3 | `legacy/v1/` untouched | PASS | SHA-256 re-verified (§3) |
 | H.4 | No MQTT/backend/frontend/Flutter/AI/payments code; CI unchanged | PASS | changed-path list in §3 |
 | H.5 | No fabricated tests/simulation/hardware results | PASS | every claim maps to a command output from this session; un-run items are marked NOT TESTED |

@@ -59,7 +59,9 @@ versions follow [Semantic Versioning](https://semver.org/) once releases start.
   pull-ups); requirements FR-003/005/007 + NFR-004 status; architecture
   overview, roadmap, root/firmware READMEs updated.
 - CI: **unchanged** — no Wokwi job is added until the repository secret
-  `WOKWI_CLI_TOKEN` exists.
+  `WOKWI_CLI_TOKEN` exists. *(The three existing jobs are green on GitHub for
+  this milestone: [run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700),
+  commit `9fab481`.)*
 
 ### Added — Milestone M1A (firmware architecture, safe hardware design, native tests)
 

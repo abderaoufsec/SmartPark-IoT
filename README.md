@@ -49,13 +49,13 @@ Statuses reflect what is **in this repository right now**, not what is planned.
 | Automatic barrier (SG90 servo) | 🟡 M1B FSM, obstruction-guarded close | closing needs observed valid-FREE lane **and** a fresh `CLEAR` on GPIO 14 every tick; open input fails toward BLOCKED = never closes; obstruction sensor itself still absent ([pinmap §12](docs/hardware/pinmap-v2.md)) |
 | LCD guidance + status LEDs | 🟡 M1A logic (host-tested) | 17-char overflow fixed in `display_manager` (covered by the native suite); untested on hardware |
 | Zone A / Zone B occupancy LEDs | 🟡 M1A logic (host-tested) | unified hysteresis thresholds; blink = `UNKNOWN`/`FAULT` |
-| PlatformIO build + CI | ✅ Working | [`firmware-ci`](.github/workflows/firmware-ci.yml): compile + native tests + cppcheck (3-job version green since [M1A run #2](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932); unchanged in M1B) |
+| PlatformIO build + CI | ✅ Working | [`firmware-ci`](.github/workflows/firmware-ci.yml): compile + native tests + cppcheck — green on [run #2](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/40524020932) (M1A) and [run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700) (M1B); workflow unchanged in M1B |
 | Direction-aware passage detection | 🟡 M1B logic + simulation, hardware absent | ordered two-point FSM v2 unit-tested; second points (IR beams, GPIO 4/16) selected, not procured — unwired inputs read FREE so counts stay reconciliation-only ([pinmap §11](docs/hardware/pinmap-v2.md)) |
 | Sensor cross-talk-safe triggering | 🟡 M1A code, not measured | independent TRIGs + 80 ms staggered slots; acoustic verification remains M6 |
 | Persistent occupancy across reboot | 🟡 M1B logic (host-tested) | CRC-valid NVS record restores the exact count (flagged *recovered*); corrupt/missing → `UNKNOWN`, never clamped; physical power-cycle evidence = M6 |
 | Non-blocking, obstruction-aware gate FSM | 🟡 M1B logic | no `delay()` in `loop()`; fresh-CLEAR guarded close + mid-sweep abort; obstruction *sensor* = M6 |
 | Wokwi simulation (headless) | 🟡 M1B configured | `simulation/wokwi/` runs the real `firmware.bin`; `lint` green (0 warnings); scenario execution **pending `WOKWI_CLI_TOKEN`** |
-| Unit test suite (host, no hardware) | ✅ Working (M1B) | **59 tests** (41 M1A + 18 M1B), `pio test -e native`, green locally; CI runs them on every push |
+| Unit test suite (host, no hardware) | ✅ Working (M1B) | **59 tests** (41 M1A + 18 M1B), `pio test -e native`, green locally and in [CI run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700) |
 | Wi-Fi + MQTT + offline event queue | ⬜ Planned M2 | [roadmap](docs/milestones/roadmap.md) |
 | FastAPI + PostgreSQL backend | ⬜ Planned M3 | [roadmap](docs/milestones/roadmap.md) |
 | SvelteKit operator dashboard | ⬜ Planned M4 | [roadmap](docs/milestones/roadmap.md) |
