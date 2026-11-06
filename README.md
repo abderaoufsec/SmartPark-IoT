@@ -54,7 +54,7 @@ Statuses reflect what is **in this repository right now**, not what is planned.
 | Sensor cross-talk-safe triggering | 🟡 M1A code, not measured | independent TRIGs + 80 ms staggered slots; acoustic verification remains M6 |
 | Persistent occupancy across reboot | 🟡 M1B logic (host-tested) | CRC-valid NVS record restores the exact count (flagged *recovered*); corrupt/missing → `UNKNOWN`, never clamped; physical power-cycle evidence = M6 |
 | Non-blocking, obstruction-aware gate FSM | 🟡 M1B logic | no `delay()` in `loop()`; fresh-CLEAR guarded close + mid-sweep abort; obstruction *sensor* = M6 |
-| Wokwi simulation (headless) | 🟡 M1B configured | `simulation/wokwi/` runs the real `firmware.bin`; `lint` green (0 warnings); scenario execution **pending `WOKWI_CLI_TOKEN`** |
+| Wokwi simulation (headless) | ✅ Working (M1B) | `simulation/wokwi/` runs the real `firmware.bin`; `lint` green (0 warnings); **3/3 scenario runs green** (2026-11-06, real token) |
 | Unit test suite (host, no hardware) | ✅ Working (M1B) | **59 tests** (41 M1A + 18 M1B), `pio test -e native`, green locally and in [CI run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700) |
 | Wi-Fi + MQTT + offline event queue | ⬜ Planned M2 | [roadmap](docs/milestones/roadmap.md) |
 | FastAPI + PostgreSQL backend | ⬜ Planned M3 | [roadmap](docs/milestones/roadmap.md) |

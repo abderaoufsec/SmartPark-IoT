@@ -33,7 +33,8 @@ versions follow [Semantic Versioning](https://semver.org/) once releases start.
   DevKit v1 + 4× HC-SR04 + pushbutton substitutes for the two beams and the
   safety loop, I2C LCD 0x27, servo, 4 LEDs), 3 automation scenarios and a
   README documenting every substitution. `wokwi-cli lint` is **green
-  (0 warnings)**; scenario execution is pending `WOKWI_CLI_TOKEN`.
+  (0 warnings)**; **3/3 scenario runs green** (2026-11-06, real
+  `WOKWI_CLI_TOKEN` — results and run-time findings in `m1b.md` §3/§3.2).
 - **18 new native tests** (41 → **59**): entry/exit confirmation,
   reversal-cancel, gap crossing, primary-loss tolerance (`UNKNOWN`+`FAULT`),
   faulted secondary, beam debounce/chatter/staleness, simultaneous entry+exit,
@@ -183,10 +184,11 @@ versions follow [Semantic Versioning](https://semver.org/) once releases start.
 
 ### Open items (explicitly pending)
 
-- **M1B: Wokwi scenario execution** — `simulation/wokwi/` is written and
-  lints clean, but no scenario has been run yet: the `WOKWI_CLI_TOKEN` has
-  not been provided. Results are recorded in `m1b.md` only after a real run;
-  no simulation outcome is claimed without execution.
+- ~~**M1B: Wokwi scenario execution**~~ — **resolved 2026-11-06**: the token
+  was provided, all three scenarios ran green, and results plus the two
+  run-time findings (S-1 YAML escape, S-2 button transient) are recorded in
+  `m1b.md` §3, §3.2 and §5 row 6.4. Remaining: the *CI* Wokwi job still needs
+  the `WOKWI_CLI_TOKEN` repository secret (row 6.5, intentionally absent).
 - Branch strategy beyond M0 (`develop` + feature branches) not yet activated —
   M0 works directly on `main` as agreed.
 - Confirm the MIT license choice with original author Mehdi Koceir before the

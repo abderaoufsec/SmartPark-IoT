@@ -7,7 +7,7 @@ passes.** Effort figures are planning estimates for two part-time contributors.
 | # | Focus | Suggested effort | Exit gate | Status |
 |---|---|---|---|---|
 | **M0** | Fork, preserve V1, repository structure, docs & CI foundation | 2–4 days | Reproducible baseline + reviewed PR | ✅ see [m0.md](m0.md) |
-| **M1** | Safe & testable firmware: pin redesign, PlatformIO modules, filtering, passage confirmation, gate FSM, persistence | 2–3 weeks | Passage, sensor and barrier tests pass | 🟡 in progress — **M1A done** ([m1a.md](m1a.md)); **M1B implemented** (persistence, passage v2, obstruction guard, Wokwi config) — see [m1b.md](m1b.md); Wokwi scenario runs pending token |
+| **M1** | Safe & testable firmware: pin redesign, PlatformIO modules, filtering, passage confirmation, gate FSM, persistence | 2–3 weeks | Passage, sensor and barrier tests pass | 🟡 in progress — **M1A done** ([m1a.md](m1a.md)); **M1B implemented** (persistence, passage v2, obstruction guard, Wokwi config) — see [m1b.md](m1b.md); Wokwi scenarios 3/3 green |
 | **M2** | MQTT + offline queue, Wi-Fi lifecycle, event IDs, heartbeat | 1–2 weeks | Reconnect/replay without duplicate logical events | ⬜ |
 | **M3** | FastAPI backend + PostgreSQL, idempotent ingest, auth, API | 2 weeks | Migrations, ingest, auth, API tests green | ⬜ |
 | **M4** | SvelteKit operator dashboard | 2 weeks | Live, responsive, authenticated UI with tests | ⬜ |
@@ -37,7 +37,7 @@ passes.** Effort figures are planning estimates for two part-time contributors.
    — **M1A: FSM with ordered two-point contract. M1B: FSM v2 (grace,
    tolerance, re-arm, entry+exit independent) unit-tested; second points
    selected as IR beams on GPIO 4/16 (pinmap §9, not procured); Wokwi
-   diagram + 3 scenarios written (lint green; runs pending token).**
+   diagram + 3 scenarios written (lint green; 3/3 runs green 2026-11-06).**
 6. Non-blocking barrier FSM with obstruction response (FR-005).
    — **M1A: guarded close. M1B: obstruction input added (GPIO 14, fresh
    CLEAR required every tick, fail-safe pull-up, mid-sweep abort — pinmap
@@ -47,7 +47,7 @@ passes.** Effort figures are planning estimates for two part-time contributors.
    host-tested); physical power-cycle evidence = M6.**
 8. Unit, simulation and hardware tests with documented results.
    — 🟡 **M1A: 41 unit tests green. M1B: 59 unit tests green + `pio check`
-   green + Wokwi lint green (scenario runs pending token); hardware = M6.**
+   green + Wokwi lint green + 3/3 scenario runs green (2026-11-06); hardware = M6.**
 
 ## M2 — step plan (summary)
 

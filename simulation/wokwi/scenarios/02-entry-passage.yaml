@@ -7,7 +7,7 @@ author: 'SmartPark-IoT'
 
 steps:
   - wait-serial: 'SmartPark-IoT V2 (M1B) boot'
-  - write-serial: 'R 2\n'
+  - write-serial: "R 2\n"
   - wait-serial: 'OCCUPANCY_RECONCILED'
 
   # 1) Vehicle enters the entry sensor zone (< 15 cm, 3 stable slot samples)
@@ -19,7 +19,7 @@ steps:
   # The approach opens the gate but NEVER changes the count (FR-003).
   # 1200 ms > 675 ms sweep, so the query lands after the sweep is done.
   - delay: 1200ms
-  - write-serial: '?\n'
+  - write-serial: "?\n"
   - wait-serial: 'STATUS occ=KNOWN count=2 free=4 gate=OPEN obstruction=BLOCKED'
 
   # 2) Vehicle reaches second point E2 (beam broken -> input pulled LOW);
@@ -29,7 +29,7 @@ steps:
       name: pressed
       value: 1
   - wait-serial: 'PASSAGE_CONFIRMED_ENTRY'
-  - write-serial: '?\n'
+  - write-serial: "?\n"
   - wait-serial: 'STATUS occ=KNOWN count=3 free=3'
 
   # 3) Vehicle clears the lane and the safety loop is held closed (CLEAR):
@@ -48,5 +48,5 @@ steps:
       name: pressed
       value: 1
   - delay: 6000ms
-  - write-serial: '?\n'
+  - write-serial: "?\n"
   - wait-serial: 'STATUS occ=KNOWN count=3 free=3 gate=CLOSED obstruction=CLEAR'

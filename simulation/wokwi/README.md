@@ -56,12 +56,14 @@ so passage/gate/persistence logic gets executed end-to-end without hardware.
 
 ```powershell
 # static check of the diagram (part ids, pin names, connections)
-wokwi-cli simulation/wokwi lint
+# (command first, then project path; --offline also works without a token)
+wokwi-cli lint simulation/wokwi
 
-# run a scenario (build first; paths are relative to the repo root)
-wokwi-cli simulation/wokwi --scenario simulation/wokwi/scenarios/01-boot-console.yaml
-wokwi-cli simulation/wokwi --scenario simulation/wokwi/scenarios/02-entry-passage.yaml
-wokwi-cli simulation/wokwi --scenario simulation/wokwi/scenarios/03-obstruction-guard.yaml
+# run a scenario (build first; the project path is relative to the repo root,
+# but --scenario paths are relative to the PROJECT dir -- verified by running)
+wokwi-cli simulation/wokwi --scenario scenarios/01-boot-console.yaml
+wokwi-cli simulation/wokwi --scenario scenarios/02-entry-passage.yaml
+wokwi-cli simulation/wokwi --timeout 60000 --scenario scenarios/03-obstruction-guard.yaml
 ```
 
 ## Scenarios
@@ -74,13 +76,19 @@ wokwi-cli simulation/wokwi --scenario simulation/wokwi/scenarios/03-obstruction-
 
 ## Status (M1B)
 
-- `wokwi-cli lint` — see m1b.md report for the recorded result.
-- Scenario runs require the `WOKWI_CLI_TOKEN` secret/value; **results are
-  recorded in `docs/milestones/m1b.md` only after an actual run** — no
-  simulated outcome is claimed here without execution.
+- `wokwi-cli lint` — **green** (0 warnings, 1 info); recorded in m1b.md.
+- **Scenarios: 3/3 executed green on 2026-11-06** with a real
+  `WOKWI_CLI_TOKEN` (wokwi-cli 0.29.1): each ended
+  `Scenario completed successfully` (exit 0). Results and the two run-time
+  findings are recorded in `docs/milestones/m1b.md` §3, §3.2 and §5 row 6.4
+  — nowhere else.
+- **Token note:** the VS Code extension license (`~/.wokwi/user.tok`) is *not*
+  the CLI token — scenario runs need the `wok_…` value from
+  <https://wokwi.com/dashboard/ci>. (Tested: the license key passes the CLI's
+  presence check but the Simulation API rejects it with `Unauthorized`.)
 - CI: **no Wokwi job is added** to `.github/workflows/firmware-ci.yml` until
   the repository secret `WOKWI_CLI_TOKEN` exists (documented in m1b.md).
-- Known watch-item: whether the current `wokwi-cli` exposes an automation
-  control for the HC-SR04 (`distance`). If it does not, scenario 01 still
-  runs (console/buttons only) and the ultrasonic-driven scenarios are marked
-  NOT TESTED with the CLI's own control-list error quoted in m1b.md.
+- Scenario-authoring gotchas, both hit and fixed on the first real run:
+  YAML **single quotes keep `\n` literal** (the console never saw a newline —
+  use double quotes for `write-serial`), and `--scenario` paths resolve
+  against the **project** directory, not the repo root.

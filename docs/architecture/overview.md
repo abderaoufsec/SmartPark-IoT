@@ -23,7 +23,7 @@ flowchart TD
 
 | Component | Milestone | Status |
 |---|---|---|
-| ESP32 edge controller (sensing, local safety, display) | M0 baseline → M1 rework | 🟡 M1B: modular firmware, 59 native tests, NVS occupancy persistence, Wokwi simulation project (`simulation/wokwi/`, lint green; scenario runs pending token); hardware unverified |
+| ESP32 edge controller (sensing, local safety, display) | M0 baseline → M1 rework | 🟡 M1B: modular firmware, 59 native tests, NVS occupancy persistence, Wokwi simulation project (`simulation/wokwi/`, lint green; 3/3 scenario runs green 2026-11-06); hardware unverified |
 | Persistent outbound event queue | M2 | ⬜ planned (in-memory dedup queue exists, M1A) |
 | Wi-Fi + MQTT transport (topics, IDs, heartbeat) | M2 | ⬜ planned |
 | Mosquitto broker | M2 | ⬜ planned |

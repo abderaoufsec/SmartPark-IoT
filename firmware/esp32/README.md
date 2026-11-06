@@ -20,8 +20,8 @@ pio check -e native "--src-filters=+<lib/smartpark_core/*>+<src/*>" \
 pio run -t upload       # flash over USB (board: esp32dev / "ESP32 Dev Module")
 pio device monitor      # serial monitor, 115200 baud
 # Wokwi simulation (after `pio run`; details in simulation/wokwi/README.md)
-wokwi-cli ../../simulation/wokwi lint --offline
-wokwi-cli ../../simulation/wokwi --scenario ../../simulation/wokwi/scenarios/01-boot-console.yaml
+wokwi-cli lint ../../simulation/wokwi --offline
+wokwi-cli ../../simulation/wokwi --scenario scenarios/01-boot-console.yaml
 ```
 
 Native tests need a host C++ compiler (g++/clang/MSVC). CI uses the

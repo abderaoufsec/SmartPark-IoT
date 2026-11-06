@@ -1,9 +1,10 @@
 # M1B — Two-point passage detection, NVS persistence, obstruction safety, simulation
 
-**Status: complete — committed, pushed and CI-green** · date: 2026-11-06 ·
-branch: `main` (no branches created; commit `9fab481` pushed with maintainer
-approval, [CI run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700)
-all 3 jobs green) · follows [m1a.md](m1a.md), supersedes nothing.
+**Status: complete — committed, pushed, CI-green, Wokwi scenarios 3/3 green** ·
+date: 2026-11-06 · branch: `main` (no branches created; commit `9fab481`
+pushed with maintainer approval, [CI run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700)
+all 3 jobs green; all 3 Wokwi scenarios executed green locally on 2026-11-06 —
+§3/§5 row 6.4) · follows [m1a.md](m1a.md), supersedes nothing.
 
 Scope per the M1B task brief and [roadmap](roadmap.md) M1 steps 5–8: reliable
 two-point passage detection, persistence, barrier obstruction safety, extended
@@ -22,7 +23,7 @@ AI / payments code was added. **CI is unchanged** (rationale in §5, row 6.5).
 | 3 — persistence (FR-007/NFR-004) | `persistence.{hpp,cpp}` — 16-byte record (magic `SPRK`, version, embedded capacity, reserved, CRC-32, strict validation order) + `src/nvs_store.hpp` (`Preferences`, ns `smartpark`, key `occ`); save on count change; boot restore → `KNOWN` + `isRestored()` + `OCCUPANCY_RESTORED`; invalid record → stays `UNKNOWN`, never clamped |
 | 4 — console (FR-011 groundwork) | bounded serial console in the glue: `R <0..255>` reconcile, `?` one-line `STATUS` — every outcome is a visible event; doubles as the Wokwi assertion surface |
 | 5 — native tests | 41 → **59** tests (18 new); all 41 M1A tests preserved byte-for-byte |
-| 6 — Wokwi simulation | [`simulation/wokwi/`](../../simulation/wokwi/): `wokwi.toml` (runs the *same* `firmware.bin`), `diagram.json` (ESP32 DevKit v1 + 4× HC-SR04 + pushbutton substitutes for both beams and the safety loop, I2C LCD 0x27, servo, 4 LEDs), **3 automation scenarios**, README documenting every substitution. `wokwi-cli lint` **green**; scenario **execution pending `WOKWI_CLI_TOKEN`** |
+| 6 — Wokwi simulation | [`simulation/wokwi/`](../../simulation/wokwi/): `wokwi.toml` (runs the *same* `firmware.bin`), `diagram.json` (ESP32 DevKit v1 + 4× HC-SR04 + pushbutton substitutes for both beams and the safety loop, I2C LCD 0x27, servo, 4 LEDs), **3 automation scenarios**, README documenting every substitution. `wokwi-cli lint` **green**; **3/3 scenario runs green** (2026-11-06, real token, §3) |
 | 7 — documentation | pinmap §9 (beams) + new §12 (obstruction electrical) + §10 checklist + BOM rows; requirements FR-003/005/007 + NFR-004; roadmap, architecture overview, root + firmware READMEs, changelog (this file) |
 
 Design decision worth recording: the **fail directions are asymmetric on
@@ -57,7 +58,7 @@ Each subsystem fails toward *its* safe action (§12.1 rule 7).
 | `pio check -d firmware/esp32 --fail-on-defect=medium` | **PASSED**, 0 high / 0 medium / **3 low** — identical to the M1A baseline (library `missingOverride` + Arduino `setup`/`loop` `unusedFunction`) |
 | GitHub Actions [run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700) for `9fab481` | **SUCCESS — all 3 jobs green** (ESP32 compile 52 s, native tests 32 s on ubuntu g++ = 59/59, cppcheck 20 s) |
 | `wokwi-cli lint simulation/wokwi --offline --warnings-as-errors` | **exit 0** — 0 warnings, 1 info (`wokwi-esp32-devkit-v1` is an undocumented part type; expected) |
-| `wokwi-cli --scenario …` (3 scenarios) | **NOT RUN — `WOKWI_CLI_TOKEN` not provided** (see §4/§5) |
+| `wokwi-cli --scenario …` (3 scenarios, `--timeout 60000` for 03) | **3/3 PASSED — `Scenario completed successfully`, exit 0 each** (wokwi-cli 0.29.1, 2026-11-06, real `WOKWI_CLI_TOKEN`): 01 boot/console (reconcile + rejection + usage), 02 entry passage (approach never counts → confirm → guarded close), 03 obstruction guard (BLOCKED at boot → abort mid-sweep → auto-retry close). Key events quoted in §3.2/§5 row 6.4 |
 | `git branch -a` | only `main` (+ `origin/main`) |
 | `git rev-parse HEAD` / `git ls-remote --heads origin` | both `d35ad1d…` — 0 new commits, work uncommitted |
 | `git status --porcelain` | `firmware/**`, `docs/**`, root `README.md`/`CHANGELOG.md`, new `simulation/` — no out-of-scope paths (one stray root file, see §6.6) |
@@ -70,7 +71,17 @@ Each subsystem fails toward *its* safe action (§12.1 rule 7).
 
 | # | Finding | Fix |
 |---|---|---|
-| B-1 | The obstruction input was first coded `INPUT_PULLDOWN` while its own documented fail-safe rule says *broken wire reads HIGH = BLOCKED*. With a pull-down, an open input reads **CLEAR** → close authorized = **unsafe**, and it would contend with the planned external pull-up (divider ≈ 2.7 V, component-dependent margin). | Changed to `INPUT_PULLUP` (internal + board 10 kΩ external, same rail, no contention). The polarity contract (HIGH = BLOCKED, LOW = CLEAR) is unchanged; §12.1 records the rule and the deliberate asymmetry with the beams. Caught by line review, fixed before this report; regression coverage: `test_obstruction_*` + Wokwi scenario 03 (pending run). |
+| B-1 | The obstruction input was first coded `INPUT_PULLDOWN` while its own documented fail-safe rule says *broken wire reads HIGH = BLOCKED*. With a pull-down, an open input reads **CLEAR** → close authorized = **unsafe**, and it would contend with the planned external pull-up (divider ≈ 2.7 V, component-dependent margin). | Changed to `INPUT_PULLUP` (internal + board 10 kΩ external, same rail, no contention). The polarity contract (HIGH = BLOCKED, LOW = CLEAR) is unchanged; §12.1 records the rule and the deliberate asymmetry with the beams. Caught by line review, fixed before this report; regression coverage: `test_obstruction_*` + Wokwi scenario 03 (run green 2026-11-06). |
+
+### 3.2 Findings from the first real scenario execution (2026-11-06)
+
+Running the scenarios for the first time surfaced two issues. Both were
+resolved without touching safety logic; neither is claimed away.
+
+| # | Finding | Resolution |
+|---|---|---|
+| S-1 | `write-serial: 'R 2\n'` used YAML **single quotes**, which do not process escapes: the console received the literal characters `R 2\n` (backslash + `n`, no newline), the line-terminated protocol never fired, and every console wait timed out (exit 42) — first run failed, and so did a delay-corrected retry. | All `write-serial` steps rewritten with **double quotes** (`"R 2\n"`) so `\n` becomes a real newline byte. The firmware console was never at fault: an `--interactive` piped-input run (real newlines) proved reconcile/STATUS/rejection/usage all correct *before* the scenarios were fixed. |
+| S-2 | Every `btn_obs` transition shows a **1–12 ms opposite-level transient** in the simulator (`sensor=6`: 0→1→0 on press). In scenario 03 the first recovery sweep therefore hit `BLOCKED` **mid-sweep**, aborted to state 4 and reopened, then auto-retry closed the gate ~3.7 s later (`26887 seq=39 BARRIER_STATE_CHANGED value=0`). | Left in place **on purpose**: abort-on-blocked-mid-sweep is exactly FR-005's fail-safe design, and the run proves it end-to-end in the real simulation. Scenario 03 now samples its final STATUS after the same 6 s close budget as the other steps. The transient itself is *not* asserted as required behavior — a simulator artifact must not become a spec. |
 
 ## 4. Safety limitations that remain (do not skip)
 
@@ -81,8 +92,10 @@ Each subsystem fails toward *its* safe action (§12.1 rule 7).
   is *not* a certified obstruction sensor (geometry unverified, H-08 open).
 - **Beams not procured** (BOM: selected M1B) → automatic counting stays
   disabled on hardware until E2/X2 exist (FR-003 hardware half open).
-- **Wokwi evidence is pending.** Lint ≠ execution: no scenario has been run;
-  no simulation outcome is claimed anywhere in this repo without a run.
+- **Wokwi evidence is scoped, not blanket.** All three scenarios ran green
+  (2026-11-06, §3) — but that is *simulated* evidence against Wokwi's part
+  models with substituted buttons: it does not validate wiring, electricity or
+  real timing (the simulation README's scope note stands).
 - **GPIO 16 (X2) makes assumption A4 load-bearing** — a PSRAM (WROVER) board
   invalidates the pin map; unverified (§10).
 - **Thresholds/timings are inherited guesses** (15/30 cm, 3 s grace, 3 s lane
@@ -91,8 +104,9 @@ Each subsystem fails toward *its* safe action (§12.1 rule 7).
 ## 5. M1B acceptance checklist
 
 Legend: PASS = implemented **and** verified by the evidence named ·
-FAIL = broken · NOT TESTED = cannot be verified without hardware or the
-Wokwi token. Rows marked *design*/*code* are explicitly not execution evidence.
+FAIL = broken · NOT TESTED = cannot be verified without hardware (or, for
+row 6.5, until the CI repository secret exists). Rows marked *design*/*code*
+are explicitly not execution evidence.
 
 | # | Item | Status | Evidence |
 |---|---|---|---|
@@ -119,7 +133,7 @@ Wokwi token. Rows marked *design*/*code* are explicitly not execution evidence.
 | 3.5 | Physical power-cycle survival / flash wear | **NOT TESTED** | M6 |
 | **Task 4 — serial console (FR-011 groundwork)** |
 | 4.1 | `R <0..255>` reconcile always emits a visible event; out-of-range rejected, not clamped | PASS | `parking_controller::reconcile` (event on every call), `test_reconcile_drives_events_and_view`, `test_occupancy_reconcile_bounds` |
-| 4.2 | `?` STATUS line; bounded parser (no unbounded echo/overflow) | PASS (code) | `src/main.cpp` `handleConsoleLine` — **execution asserted by Wokwi scenario 01, pending token** |
+| 4.2 | `?` STATUS line; bounded parser (no unbounded echo/overflow) | PASS | `src/main.cpp` `handleConsoleLine` — **execution asserted by Wokwi scenario 01 (run green 2026-11-06)** |
 | **Task 5 — extended native tests** |
 | 5.1 | Whole suite green | PASS | `pio test -e native` → **59/59** |
 | 5.2 | All 41 M1A tests preserved unchanged | PASS | suite output lists every M1A case; 18 additions only |
@@ -127,9 +141,9 @@ Wokwi token. Rows marked *design*/*code* are explicitly not execution evidence.
 | **Task 6 — Wokwi simulation** |
 | 6.1 | `wokwi.toml` points at the real `firmware.bin`/`firmware.elf`; diagram parts/pins correct | PASS | `wokwi-cli lint --offline --warnings-as-errors` → exit 0, 0 warnings |
 | 6.2 | Every substitution documented (IR beams → pushbuttons, safety loop → button, ECHO divider not modeled) | PASS | `simulation/wokwi/README.md` |
-| 6.3 | Three scenarios written with exact serial assertions (boot/console, entry passage, obstruction guard) | PASS (files) | `simulation/wokwi/scenarios/*.yaml` |
-| 6.4 | Scenario **execution** evidence | **NOT TESTED** | `WOKWI_CLI_TOKEN` not provided — runs happen only with a real token; results will be recorded here, nowhere else |
-| 6.5 | CI Wokwi job | **NOT TESTED** (intentionally absent) | no job added until the `WOKWI_CLI_TOKEN` secret exists — a job that cannot run would be a fake check |
+| 6.3 | Three scenarios written with exact serial assertions (boot/console, entry passage, obstruction guard) | PASS | `simulation/wokwi/scenarios/*.yaml` — all three executed green (6.4) |
+| 6.4 | Scenario **execution** evidence | **PASS** | **3/3 `Scenario completed successfully`, exit 0** — wokwi-cli 0.29.1, 2026-11-06, real `WOKWI_CLI_TOKEN` (maintainer-provided). 01: `OCCUPANCY_RECONCILED` + `OCCUPANCY_CHANGE_REJECTED value=9` (no clamping) + both STATUS assertions + usage line. 02: `ENTRY_APPROACH` (count unchanged) → `PASSAGE_CONFIRMED_ENTRY` → count 3 → close sweep `3→0` under `obstruction=CLEAR`. 03: boot `obstruction=BLOCKED` → close denied until CLEAR → mid-sweep transient abort (state 4) → reopen → auto-retry `CLOSED` → final STATUS `gate=CLOSED obstruction=CLEAR`. Findings S-1/S-2 recorded in §3.2 |
+| 6.5 | CI Wokwi job | **NOT TESTED** (intentionally absent) | no `WOKWI_CLI_TOKEN` **repository secret** exists — a job that cannot run would be a fake check; local runs are recorded in 6.4 |
 | **Task 7 — documentation** |
 | 7.1 | `pinmap-v2.md`: §9 beams, new §12 obstruction electrical, §3/§10/§11 updated, A4 gate | PASS | this document's §1 + diff |
 | 7.2 | `bom.csv` + §11: beams ×2, pull-ups ×3, obstruction row updated | PASS | `docs/hardware/bom.csv` |
@@ -147,19 +161,20 @@ Wokwi token. Rows marked *design*/*code* are explicitly not execution evidence.
 | H.7 | Requirements not silently changed | PASS | status-column edits only |
 | H.8 | Stray root file noted, not deleted | PASS | see §6.6 |
 
-**Totals: 35 PASS · 0 FAIL · 6 NOT TESTED** (rows 1.8, 2.4, 2.5, 3.5, 6.4,
-6.5 — all hardware- or token-gated; none of them is claimed as working).
+**Totals: 36 PASS · 0 FAIL · 5 NOT TESTED** (rows 1.8, 2.4, 2.5, 3.5, 6.5 —
+all hardware- or CI-secret-gated; none of them is claimed as working).
 
 ## 6. Known risks carried forward
 
-1. **Wokwi token outstanding (top priority).** The three scenarios are the
-   remaining M1 evidence; they run the moment `WOKWI_CLI_TOKEN` is available.
-2. **`set-control distance` support for `wokwi-hc-sr04` is unverified** in
-   wokwi-cli 0.29.1 (the docs' control list is stale). If unsupported, the CLI
-   fails the run *and lists the part's real controls* — scenario 01 (console +
-   buttons only) still runs, and the ultrasonic-driven scenarios are then
-   marked NOT TESTED with that output quoted (documented fallback in
-   `simulation/wokwi/README.md`).
+1. **~~Wokwi token outstanding~~ — RESOLVED 2026-11-06.** Maintainer provided
+   a real `WOKWI_CLI_TOKEN`; all three scenarios ran green and row 6.4 now
+   holds execution evidence (not lint, not intent).
+2. **`set-control distance` on `wokwi-hc-sr04` — VERIFIED working** in
+   wokwi-cli 0.29.1 (the docs' control list is stale): the entry/exit
+   approach steps drove real `ENTRY_APPROACH` events in scenarios 02/03.
+   Pushbutton `pressed` works too. Residual risk: wokwi-cli is alpha — a
+   future CLI/API change can break the runs; they are re-runnable from the
+   README commands.
 3. **A4 (no PSRAM) is now load-bearing** — GPIO 16 carries the X2 beam.
 4. Host compiler remains environment-dependent (WinLibs locally, ubuntu in CI).
 5. NVS record survives *logical* corruption (CRC) but physical power-cycle
@@ -172,9 +187,10 @@ Wokwi token. Rows marked *design*/*code* are explicitly not execution evidence.
 
 **Close out M1 first, then M2.**
 
-1. **Immediate (M1 close-out):** provide `WOKWI_CLI_TOKEN` → run the three
-   scenarios → record real results (or the CLI's control-list error) in §5 row
-   6.4 of this file. That is the last M1 evidence gap and costs minutes.
+1. **M1 close-out: DONE.** `WOKWI_CLI_TOKEN` was provided on 2026-11-06 →
+   all three scenarios ran green → results recorded in §5 row 6.4 and §3.2
+   (findings S-1/S-2). M1's evidence chain is complete for everything that
+   can be verified without hardware.
 2. **Then M2** (MQTT + offline queue, Wi-Fi lifecycle, event IDs, heartbeat) —
    the roadmap's next milestone; the event queue and `uint32` seq are already
    the M2 hand-off surface.

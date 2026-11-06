@@ -11,18 +11,20 @@ steps:
   - wait-serial: 'behavior: SIMULATED-LOGIC ONLY - NOT PHYSICALLY VALIDATED'
 
   # Explicit reconciliation always emits a visible event (FR-011 console)
-  - write-serial: 'R 2\n'
+  # NOTE: double quotes are required — YAML single quotes keep \n literal,
+  # and the console protocol is newline-terminated (real-run finding).
+  - write-serial: "R 2\n"
   - wait-serial: 'OCCUPANCY_RECONCILED'
-  - write-serial: '?\n'
+  - write-serial: "?\n"
   - wait-serial: 'STATUS occ=KNOWN count=2 free=4 gate=CLOSED'
 
   # Out-of-range reconcile (9 > CAPACITY 6): visible rejection, no clamping,
   # count unchanged (V1 finding F-10)
-  - write-serial: 'R 9\n'
+  - write-serial: "R 9\n"
   - wait-serial: 'OCCUPANCY_CHANGE_REJECTED'
-  - write-serial: '?\n'
+  - write-serial: "?\n"
   - wait-serial: 'STATUS occ=KNOWN count=2 free=4'
 
   # Unrecognized input prints usage; the parser is bounded (no crash/no echo)
-  - write-serial: 'X\n'
+  - write-serial: "X\n"
   - wait-serial: 'OK usage: R <0..6> | ?'
