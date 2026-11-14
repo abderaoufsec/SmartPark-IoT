@@ -31,23 +31,27 @@ public:
   }
 
   /**
-   * Load the raw record into buf.
+   * Load the raw record for `key` into buf.
+   * @param key   NVS key (e.g. "occ" or "evq")
    * @param lenOut bytes actually read (0 when absent)
    * @return true when the namespace is open (lenOut==0 means "no record")
    */
-  bool load(uint8_t* buf, size_t cap, size_t& lenOut) {
+  bool load(const char* key, uint8_t* buf, size_t cap, size_t& lenOut) {
     lenOut = 0;
     if (!open_ || buf == nullptr || cap == 0) return false;
-    const size_t have = prefs_.getBytesLength(key());
+    const size_t have = prefs_.getBytesLength(key);
     if (have == 0 || have > cap) return true; // absent or too big: no restore
-    lenOut = prefs_.getBytes(key(), buf, have);
+    lenOut = prefs_.getBytes(key, buf, have);
     return true;
   }
 
-  /** @return true when the whole blob was written. */
-  bool save(const uint8_t* buf, size_t len) {
+  /**
+   * Save the raw record for `key`.
+   * @return true when the whole blob was written.
+   */
+  bool save(const char* key, const uint8_t* buf, size_t len) {
     if (!open_ || buf == nullptr || len == 0) return false;
-    return prefs_.putBytes(key(), buf, len) == len;
+    return prefs_.putBytes(key, buf, len) == len;
   }
 
   void close() {
@@ -61,7 +65,6 @@ private:
   // Function-scope statics: no in-class constexpr static member definitions
   // needed under the Arduino-ESP32 gnu++11 build.
   static const char* ns() { return "smartpark"; }
-  static const char* key() { return "occ"; } // the single M1B record
   Preferences prefs_;
   bool open_ = false;
 };
