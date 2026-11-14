@@ -8,8 +8,8 @@ passes.** Effort figures are planning estimates for two part-time contributors.
 |---|---|---|---|---|
 | **M0** | Fork, preserve V1, repository structure, docs & CI foundation | 2–4 days | Reproducible baseline + reviewed PR | ✅ see [m0.md](m0.md) |
 | **M1** | Safe & testable firmware: pin redesign, PlatformIO modules, filtering, passage confirmation, gate FSM, persistence | 2–3 weeks | Passage, sensor and barrier tests pass | 🟡 in progress — **M1A done** ([m1a.md](m1a.md)); **M1B implemented** (persistence, passage v2, obstruction guard, Wokwi config) — see [m1b.md](m1b.md); Wokwi scenarios 3/3 green |
-| **M2** | MQTT + offline queue, Wi-Fi lifecycle, event IDs, heartbeat | 1–2 weeks | Reconnect/replay without duplicate logical events | ⬜ |
-| **M3** | FastAPI backend + PostgreSQL, idempotent ingest, auth, API | 2 weeks | Migrations, ingest, auth, API tests green | ⬜ |
+| **M2** | MQTT + offline queue, Wi-Fi lifecycle, event IDs, heartbeat | 1–2 weeks | Reconnect/replay without duplicate logical events | ✅ **complete** (MQTT client, NVS-backed persistent queue, Wi-Fi manager, 7 native tests) — see `backend-ci.yml` is M3; firmware merged to `main` |
+| **M3** | FastAPI backend + PostgreSQL, idempotent ingest, auth, API | 2 weeks | Migrations, ingest, auth, API tests green | ✅ **complete** (FastAPI, SQLAlchemy, Alembic, JWT auth, idempotent event ingest, 7 tests pass, backend CI workflow) |
 | **M4** | SvelteKit operator dashboard | 2 weeks | Live, responsive, authenticated UI with tests | ⬜ |
 | **M5** | Simulator + end-to-end integration from a clean clone | 1–2 weeks | Full-stack demo without hardware | ⬜ |
 | **M6** | Hardware integration, electrical verification, calibration, measured metrics | 2–3 weeks | Recorded physical tests and measured metrics | ⬜ |

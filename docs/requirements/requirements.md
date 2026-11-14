@@ -20,7 +20,7 @@ refactor toward them with a compiling starting point.
 | FR-006 | Local sensing and safe gate logic with Wi-Fi/backend unavailable | ✅ trivially true today (no network code); must remain true in M2+ |
 | FR-007 | Persist counters and event queue across expected restarts; define crash consistency | 🟡 M1A→M1B: NVS persistence implemented (`persistence.*` 16-byte record: magic/version/CAPACITY/reserved + CRC-32) — save on count change, boot restore → `KNOWN` + `isRestored()` + `OCCUPANCY_RESTORED`; invalid/corrupt record → stays `UNKNOWN`, never clamped (unit-tested incl. full validation battery). Physical power-cycle evidence = M6 (V1: counter reset to 0) |
 | FR-008 | Publish validated occupancy events + heartbeat over MQTT with durable IDs and sequence numbers | 🟡 M2: MQTT client + persistent event queue on ESP32 (PubSubClient, NVS-backed queue, heartbeat). Wi-Fi SSID not yet configured; broker integration test pending. |
-| FR-009 | Backend deduplicates repeated events; records ingestion failures | ⬜ M3 |
+| FR-009 | Backend deduplicates repeated events; records ingestion failures | 🟡 M3: FastAPI backend with idempotent ingest by `(device_id, event_id)` unique constraint; ingestion failures recorded; 7 tests pass (ingest, idempotency, auth, list). |
 | FR-010 | Authenticated dashboard: facility, zone, capacity, confidence, device health, history, alerts | ⬜ M4 |
 | FR-011 | Operator reconciliation with reason and audit log; no silent corrections | ⬜ M3–M4 |
 | FR-012 | Simulated device events exercise the same backend contract as physical hardware | ⬜ M5 |
@@ -31,10 +31,10 @@ refactor toward them with a compiling starting point.
 |---|---|---|
 | NFR-001 | Local gate safety independent of network connectivity (mandatory) | design invariant from M1 onward |
 | NFR-002 | Healthy LAN: 95% of confirmed events visible on dashboard within 2 s | ⬜ M4/M6 measurement |
-| NFR-003 | No duplicate database rows after at-least-once replay | ⬜ M3 |
+| NFR-003 | No duplicate database rows after at-least-once replay | 🟡 M3: idempotent ingest by `(device_id, event_id)` unique constraint; verified by test (`test_idempotent_ingest_no_duplicates`). |
 | NFR-004 | Reboot/reconnect recovers without inventing free spaces | 🟡 M1A→M1B: boot = `UNKNOWN` unless a **CRC-valid** NVS record restores the exact count (flagged recovered, never re-verified); corrupt/out-of-range records are rejected visibly — unit-tested; physical power-cycle evidence = M6 |
 | NFR-005 | Local simulation reproducible with documented commands (Windows 11 + WSL2 or Linux) | ⬜ M5 |
-| NFR-006 | API and broker reject unauthorized access; secrets never committed | partially: `.gitignore`/`.env.example` in M0; enforcement from M2/M3 |
+| NFR-006 | API and broker reject unauthorized access; secrets never committed | 🟡 M3: JWT bearer auth on all event/status endpoints; `.env` git-ignored, `.env.example` placeholders only; negative auth tests pass. |
 | NFR-007 | CI validates builds/tests/formatting/migrations before merging | 🟡 M1A: firmware CI = compile + native tests (warnings as errors) + cppcheck; migrations from M3 |
 | NFR-008 | Logs include event/device IDs and are scrubbed of secrets | ⬜ M2 |
 

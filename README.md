@@ -56,8 +56,8 @@ Statuses reflect what is **in this repository right now**, not what is planned.
 | Non-blocking, obstruction-aware gate FSM | 🟡 M1B logic | no `delay()` in `loop()`; fresh-CLEAR guarded close + mid-sweep abort; obstruction *sensor* = M6 |
 | Wokwi simulation (headless) | ✅ Working (M1B) | `simulation/wokwi/` runs the real `firmware.bin`; `lint` green (0 warnings); **3/3 scenario runs green** (2026-11-06, real token) |
 | Unit test suite (host, no hardware) | ✅ Working (M1B) | **59 tests** (41 M1A + 18 M1B), `pio test -e native`, green locally and in [CI run #3](https://github.com/abderaoufsec/SmartPark-IoT/actions/runs/42205158700) |
-| Wi-Fi + MQTT + offline event queue | 🟡 M2 (in progress) | PubSubClient MQTT client + NVS-backed `PersistentQueue`; JSON event envelope + retained heartbeat; non-blocking reconnect. Wi-Fi SSID not configured; broker integration test pending ([roadmap](docs/milestones/roadmap.md)) |
-| FastAPI + PostgreSQL backend | ⬜ Planned M3 | [roadmap](docs/milestones/roadmap.md) |
+| Wi-Fi + MQTT + offline event queue | ✅ M2 complete | PubSubClient MQTT client + NVS-backed `PersistentQueue`; JSON event envelope + retained heartbeat; non-blocking reconnect. 7 native tests pass. Wi-Fi SSID not configured; broker integration test pending ([roadmap](docs/milestones/roadmap.md)) |
+| FastAPI + PostgreSQL backend | ✅ M3 complete | `backend/app/` FastAPI app with SQLAlchemy models (devices, events, occupancy_snapshots), Alembic migrations, JWT bearer auth, idempotent event ingest by `(device_id, event_id)`, MQTT consumer (`app/mqtt_consumer.py`), 7 tests passing, `backend-ci.yml` GitHub Actions workflow |
 | SvelteKit operator dashboard | ⬜ Planned M4 | [roadmap](docs/milestones/roadmap.md) |
 | Device simulator + end-to-end demo | ⬜ Planned M5 | [roadmap](docs/milestones/roadmap.md) |
 | Hardware calibration & measured results | ⬜ Planned M6 | no measured results exist yet |

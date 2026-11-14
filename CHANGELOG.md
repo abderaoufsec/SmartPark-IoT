@@ -6,7 +6,7 @@ versions follow [Semantic Versioning](https://semver.org/) once releases start.
 
 ## [Unreleased]
 
-### Added — Milestone M2 (in progress: MQTT + offline event queue)
+### Added — Milestone M2 (complete: MQTT + offline event queue)
 
 - **MQTT client** (`src/mqtt_client.{hpp,cpp}`): PubSubClient wrapper with
   non-blocking connect/reconnect (5 s backoff), JSON event envelope
@@ -24,6 +24,28 @@ versions follow [Semantic Versioning](https://semver.org/) once releases start.
   restoring a persisted queue.
 - **7 new native tests**: persistent queue serialize round-trip, bad-magic/
   bad-version/truncation rejection, dirty tracking, peek vs pop.
+
+### Added — Milestone M3 (complete: FastAPI backend + PostgreSQL)
+
+- **`backend/`** — FastAPI application with pinned dependencies (`requirements.txt`)
+- **Models** (`app/models.py`): `Device`, `Event`, `OccupancySnapshot` SQLAlchemy
+  models; idempotent event ingest by `(device_id, event_id)` unique constraint
+  (ADR-005, NFR-003)
+- **Database** (`app/database.py`): SQLAlchemy engine + session factory, `get_db()`
+  FastAPI dependency
+- **Auth** (`app/auth.py`): JWT bearer tokens (python-jose + passlib/bcrypt),
+  `create_access_token()`, `decode_token()`, `HTTPBearer` dependency
+- **Schemas** (`app/schemas.py`): Pydantic v2 schemas for events, devices,
+  occupancy, tokens, capacity
+- **API** (`app/api/events.py`, `app/api/status.py`): `POST /events` (idempotent
+  ingest, occupancy recompute), `GET /events`, `GET /status/{device_id}`,
+  `GET /occupancy/{device_id}`, `GET /health`, `POST /token`
+- **MQTT consumer** (`app/mqtt_consumer.py`): paho-mqtt client subscribes to
+  device event topics, ingests via the same API logic
+- **Migrations** (`alembic/`): Alembic env.py + script template for schema versioning
+- **CI** (`.github/workflows/backend-ci.yml`): pytest on push/PR
+- **7 tests passing** (`backend/tests/`): ingest, idempotent dedup (NFR-003),
+  auth required, invalid token rejected, list events, login, health
 
 ### Added — Milestone M1B (passage v2, persistence, obstruction guard, simulation)
 

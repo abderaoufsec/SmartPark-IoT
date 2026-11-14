@@ -27,7 +27,7 @@ flowchart TD
 | Persistent outbound event queue | M1B (in-memory) → M2 (durable/NVS) | 🟡 M2: `PersistentQueue` wraps `EventQueue` with NVS serialization; events survive reboot; MQTT publisher drains the queue |
 | Wi-Fi + MQTT transport (topics, IDs, heartbeat) | M2 | 🟡 M2: PubSubClient client, non-blocking reconnect, JSON event publishing, retained heartbeat; Wi-Fi SSID not yet configured |
 | Mosquitto broker | M2 | ⬜ planned |
-| FastAPI backend + PostgreSQL | M3 | ⬜ planned |
+| FastAPI backend + PostgreSQL | M3 | ✅ **complete** — `backend/app/` FastAPI app with SQLAlchemy models (devices, events, occupancy_snapshots), Alembic migrations, JWT bearer auth, idempotent event ingest by `(device_id, event_id)`, MQTT consumer (`app/mqtt_consumer.py`), 7 tests passing, `backend-ci.yml` GitHub Actions workflow |
 | SvelteKit dashboard | M4 | ⬜ planned |
 | Device simulator | M5 | ⬜ planned |
 | Flutter app | M10 (optional) | ⬜ planned |
