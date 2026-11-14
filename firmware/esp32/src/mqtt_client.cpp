@@ -19,7 +19,8 @@ void MqttClient::makeTopicBase(char* out, size_t cap,
                                const char* facilityId,
                                const char* deviceId) {
   snprintf(out, cap, "smartpark/%s/%s", facilityId, deviceId);
-}void MqttClient::topics(const char* facilityId, const char* deviceId) {
+} 
+void MqttClient::topics(const char* facilityId, const char* deviceId) {
   makeTopicBase(topicBase_, sizeof(topicBase_), facilityId, deviceId);
   snprintf(topicEvents_, sizeof(topicEvents_), "%s/events", topicBase_);
   snprintf(topicHeartbeat_, sizeof(topicHeartbeat_), "%s/heartbeat",
@@ -138,4 +139,5 @@ void MqttClient::disconnect() {
 }
 
 } // namespace smartpark
+
 

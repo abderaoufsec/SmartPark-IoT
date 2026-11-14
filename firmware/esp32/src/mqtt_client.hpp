@@ -53,7 +53,6 @@ public:
 
 private:
   void reconnect(uint32_t nowMs);
-  bool publishEvent(const ParkEvent& e);
 
   PersistentQueue& queue_;
   bool connected_;
