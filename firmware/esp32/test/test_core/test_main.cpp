@@ -40,6 +40,7 @@
 #include "../../lib/smartpark_core/occupancy_manager.hpp"
 #include "../../lib/smartpark_core/passage_detector.hpp"
 #include "../../lib/smartpark_core/parking_controller.hpp"
+#include "../../lib/smartpark_core/persistent_queue.hpp"
 #include "../../lib/smartpark_core/persistence.hpp"
 #include "../../lib/smartpark_core/sensor_filter.hpp"
 #include <unity.h>
@@ -1320,6 +1321,99 @@ static void test_slot_for_advances_and_survives_rollover(void) {
 }
 
 // ---------------------------------------------------------------------------
+// 22. M2: persistent event queue (FR-008 groundwork)
+// ---------------------------------------------------------------------------
+
+static void test_persistent_queue_serialize_roundtrip(void) {
+  PersistentQueue q;
+  ParkEvent e1{EventType::ENTRY_APPROACH, SENSOR_ENTRY, 1, 1000, 7};
+  ParkEvent e2{EventType::PASSAGE_CONFIRMED_ENTRY, SENSOR_ENTRY, 1, 2000, 8};
+  TEST_ASSERT_TRUE(q.push(e1));
+  TEST_ASSERT_TRUE(q.push(e2));
+  TEST_ASSERT_EQUAL_UINT8(2, q.size());
+  TEST_ASSERT_EQUAL_UINT32(9, q.nextSeq());
+
+  uint8_t buf[PersistentQueue::MAX_SERIALIZED_SIZE];
+  const size_t n = q.serialize(buf, sizeof(buf));
+  TEST_ASSERT_GREATER_THAN(0, n);
+
+  // Deserialize into a fresh queue.
+  PersistentQueue q2;
+  TEST_ASSERT_TRUE(q2.deserialize(buf, n));
+  TEST_ASSERT_EQUAL_UINT8(2, q2.size());
+  TEST_ASSERT_EQUAL_UINT32(9, q2.nextSeq());
+
+  // Events come out in order with preserved seqs.
+  ParkEvent out;
+  TEST_ASSERT_TRUE(q2.pop(out));
+  TEST_ASSERT_EQUAL_UINT8(7, out.seq);
+  TEST_ASSERT_EQUAL_UINT8(1, out.value);
+  TEST_ASSERT_TRUE(q2.pop(out));
+  TEST_ASSERT_EQUAL_UINT8(8, out.seq);
+  TEST_ASSERT_TRUE(q2.empty());
+}
+
+static void test_persistent_queue_bad_magic_rejected(void) {
+  PersistentQueue q;
+  uint8_t buf[PersistentQueue::MAX_SERIALIZED_SIZE];
+  memset(buf, 0xAA, sizeof(buf)); // garbage
+  TEST_ASSERT_FALSE(q.deserialize(buf, sizeof(buf)));
+  TEST_ASSERT_EQUAL_UINT8(0, q.size());
+}
+
+static void test_persistent_queue_bad_version_rejected(void) {
+  PersistentQueue q;
+  uint8_t buf[PersistentQueue::MAX_SERIALIZED_SIZE];
+  memset(buf, 0, sizeof(buf));
+  memcpy(buf, PersistentQueue::MAGIC, 4); // good magic
+  putU16Le(buf + 4, 999); // bad version
+  TEST_ASSERT_FALSE(q.deserialize(buf, sizeof(buf)));
+  TEST_ASSERT_EQUAL_UINT8(0, q.size());
+}
+
+static void test_persistent_queue_truncated_rejected(void) {
+  PersistentQueue q;
+  PersistentQueue q2;
+  ParkEvent e{EventType::ENTRY_APPROACH, SENSOR_ENTRY, 1, 1000, 7};
+  TEST_ASSERT_TRUE(q.push(e));
+  const size_t n = q.serialize(buf, sizeof(buf));
+  // Truncate by 1 byte: should fail.
+  TEST_ASSERT_FALSE(q2.deserialize(buf, n - 1));
+  TEST_ASSERT_EQUAL_UINT8(0, q2.size());
+}
+
+static void test_persistent_queue_dirty_tracking(void) {
+  PersistentQueue q;
+  TEST_ASSERT_FALSE(q.dirty());
+  ParkEvent e{EventType::ENTRY_APPROACH, SENSOR_ENTRY, 1, 1000, 7};
+  TEST_ASSERT_TRUE(q.push(e));
+  TEST_ASSERT_TRUE(q.dirty());
+  q.clean();
+  TEST_ASSERT_FALSE(q.dirty());
+  TEST_ASSERT_TRUE(q.pop(e));
+  TEST_ASSERT_TRUE(q.dirty());
+}
+
+static void test_persistent_queue_peek_does_not_remove(void) {
+  PersistentQueue q;
+  ParkEvent e{EventType::PASSAGE_CONFIRMED_EXIT, SENSOR_EXIT, -1, 5000, 3};
+  TEST_ASSERT_TRUE(q.push(e));
+  TEST_ASSERT_EQUAL_UINT8(1, q.size());
+
+  ParkEvent out;
+  TEST_ASSERT_TRUE(q.peek(out));
+  TEST_ASSERT_EQUAL_UINT8(3, out.seq);
+  TEST_ASSERT_EQUAL_UINT8(1, q.size()); // still there after peek
+
+  TEST_ASSERT_TRUE(q.pop(out));
+  TEST_ASSERT_EQUAL_UINT8(0, q.size()); // removed after pop
+}
+
+// Helper for little-endian u16 (mirrors production code).
+static void putU16Le(uint8_t* p, uint16_t v) {
+  p[0] = static_cast<uint8_t>(v & 0xFFu);
+  p[1] = static_cast<uint8_t>((v >> 8) & 0xFFu);
+}
 
 int main(int argc, char** argv) {
   (void)argc;
@@ -1406,6 +1500,13 @@ int main(int argc, char** argv) {
   RUN_TEST(test_pad_line_truncates_and_pads);
   // scheduler
   RUN_TEST(test_slot_for_advances_and_survives_rollover);
+  // 22. M2: persistent event queue (FR-008 groundwork)
+  RUN_TEST(test_persistent_queue_serialize_roundtrip);
+  RUN_TEST(test_persistent_queue_bad_magic_rejected);
+  RUN_TEST(test_persistent_queue_bad_version_rejected);
+  RUN_TEST(test_persistent_queue_truncated_rejected);
+  RUN_TEST(test_persistent_queue_dirty_tracking);
+  RUN_TEST(test_persistent_queue_peek_does_not_remove);
 
   return UNITY_END();
 }

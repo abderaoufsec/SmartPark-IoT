@@ -28,6 +28,16 @@ public:
   uint32_t overflowCount() const { return overflow_; }
   uint32_t nextSeq() const { return seq_; }
 
+  /** Set the next sequence number (used when restoring a persisted queue). */
+  void setNextSeq(uint32_t seq) { seq_ = seq; }
+
+  /**
+   * Push without assigning a new sequence number (used when restoring a
+   * persisted queue; seq values are preserved from the stored record).
+   * Returns false on duplicate-of-tail or overflow.
+   */
+  bool pushRaw(const ParkEvent& e);
+
   /** Random-access for tests/inspection; index 0 = oldest. */
   const ParkEvent& at(size_t i) const { return buf_[(head_ + i) % CAP]; }
 

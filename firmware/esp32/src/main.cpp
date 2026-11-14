@@ -26,11 +26,14 @@
 #include <Wire.h>
 
 #include "display_manager.hpp"
+#include "mqtt_client.hpp"
 #include "nvs_store.hpp"
 #include "parking_controller.hpp"
+#include "persistent_queue.hpp"
 #include "persistence.hpp"
 #include "pins.hpp"
 #include "sensor_reader.hpp"
+#include "wifi_manager.hpp"
 
 using namespace smartpark;
 
@@ -39,6 +42,26 @@ static Servo gateServo; // ESP32Servo exports the classic `Servo` class name
 static SensorReader reader;
 static ParkingController ctrl;
 static storage::NvsStore store;
+
+// ---- M2 configuration (see .env.example for overridable values) ----
+static constexpr const char* WIFI_SSID_DEFAULT = "";       // set before build
+static constexpr const char* WIFI_PASS_DEFAULT = "";       // set before build
+static constexpr const char* MQTT_HOST_DEFAULT = "localhost";
+static constexpr uint16_t MQTT_PORT_DEFAULT = 1883;
+static constexpr const char* MQTT_USERNAME_DEFAULT = nullptr;
+static constexpr const char* MQTT_PASSWORD_DEFAULT = nullptr;
+static constexpr const char* FACILITY_ID_DEFAULT = "fac-demo";
+static constexpr const char* DEVICE_ID_DEFAULT = "esp32-001";
+
+// ---- M2 instances ----
+static PersistentQueue eventQueue;         // durable event queue (NVS-backed)
+static WifiManager wifiMgr;                // Wi-Fi connect/reconnect
+static MqttClient mqtt(eventQueue);        // MQTT publisher
+
+static uint32_t lastMqttPublishMs = 0;     // throttle event publishing
+static uint32_t lastQueuePersistMs = 0;    // throttle NVS queue writes
+static constexpr uint32_t MQTT_PUBLISH_INTERVAL_MS = 100;  // drain queue often
+static constexpr uint32_t QUEUE_PERSIST_INTERVAL_MS = 1000; // persist queue ≤1 Hz
 
 static uint32_t lastSlotMs = 0;
 static uint32_t lastLcdMs = 0;
@@ -83,6 +106,8 @@ static void drainEvents() {
     if (e.sensorId != EVENT_NO_SENSOR)
       Serial.printf(" sensor=%u", e.sensorId);
     Serial.printf(" value=%d\n", e.value);
+    // Mirror into the durable M2 queue (serial log today, MQTT in M2).
+    eventQueue.push(e);
   }
 }
 
@@ -108,7 +133,7 @@ static void persistIfChanged(const ControllerView& v) {
   const size_t n =
       persistence::encodeOccupancy(v.count, buf, sizeof(buf));
   if (n == 0) return; // out-of-range count: never written (no silent clamp)
-  if (store.save(buf, n)) lastSavedCount = v.count;
+  if (store.save("occ", buf, n)) lastSavedCount = v.count;
 }
 
 /**
@@ -173,7 +198,7 @@ static void pumpConsole(uint32_t nowMs) {
 void setup() {
   Serial.begin(115200);
   Serial.println();
-  Serial.println(F("SmartPark-IoT V2 (M1B) boot"));
+  Serial.println(F("SmartPark-IoT V2 (M2) boot"));
   Serial.println(F("behavior: SIMULATED-LOGIC ONLY - NOT PHYSICALLY VALIDATED"));
 
   reader.begin();
@@ -205,7 +230,7 @@ void setup() {
     uint8_t buf[persistence::OCC_RECORD_SIZE];
     size_t len = 0;
     nvsUsable = store.begin();
-    if (nvsUsable && store.load(buf, sizeof(buf), len)) {
+    if (nvsUsable && store.load("occ", buf, sizeof(buf), len)) {
       uint8_t count = 0;
       const persistence::RecordStatus st =
           persistence::decodeOccupancy(buf, len, count);
@@ -230,7 +255,38 @@ void setup() {
   if (!ctrl.occupancy().isKnown())
     Serial.println(F("occupancy=UNKNOWN until reconciled; gate stays CLOSED"));
 
-  // Gate rests CLOSED at boot (V1-compatible resting position). A close
+  // --- M2: restore durable event queue from NVS, then start Wi-Fi + MQTT. ---
+  if (nvsUsable) {
+    uint8_t qbuf[PersistentQueue::MAX_SERIALIZED_SIZE];
+    size_t qlen = 0;
+    if (store.load("evq", qbuf, sizeof(qbuf), qlen) && qlen > 0) {
+      if (eventQueue.deserialize(qbuf, qlen)) {
+        Serial.printf("NVS: event queue restored (%u events, seq=%u)\n",
+                      eventQueue.size(), eventQueue.nextSeq());
+      } else {
+        Serial.println(F("NVS: event queue rejected -> empty"));
+      }
+    } else {
+      Serial.println(F("NVS: no event queue -> empty"));
+    }
+  }
+
+  // Wi-Fi (non-blocking; local operation is independent of network state).
+  // WIFI_SSID_DEFAULT must be set before build; empty = skip Wi-Fi entirely.
+  if (WIFI_SSID_DEFAULT[0] != '\0')
+    wifiMgr.begin(WIFI_SSID_DEFAULT, WIFI_PASS_DEFAULT);
+  else
+    Serial.println(F("Wi-Fi: not configured (WIFI_SSID_DEFAULT empty)"));
+
+  // MQTT: build topics from facility/device IDs, then connect.
+  mqtt.topics(FACILITY_ID_DEFAULT, DEVICE_ID_DEFAULT);
+  Serial.printf("MQTT: target=%s:%u client=%s topics=%s/...\n",
+                MQTT_HOST_DEFAULT, MQTT_PORT_DEFAULT, DEVICE_ID_DEFAULT,
+                FACILITY_ID_DEFAULT);
+  mqtt.begin(MQTT_HOST_DEFAULT, MQTT_PORT_DEFAULT, DEVICE_ID_DEFAULT,
+             MQTT_USERNAME_DEFAULT, MQTT_PASSWORD_DEFAULT);
+
+  // Gate rests CLOSED at boot (V1-compatible resting position).
   // still requires a fresh CLEAR obstruction on every tick (pinmap §12).
   gateServo.setPeriodHertz(50);
   gateServo.attach(pins::SERVO, 500, 2400);
@@ -287,4 +343,28 @@ void loop() {
   // 6. Persistence (count-change only) and the FR-011 console.
   persistIfChanged(v);
   pumpConsole(nowMs);
+
+  // 7. M2: Wi-Fi + MQTT lifecycle (non-blocking). Network loss never affects
+  //    local sensing/gate safety (NFR-001): these calls are best-effort only.
+  if (WIFI_SSID_DEFAULT[0] != '\0')
+    wifiMgr.loop(nowMs);
+  mqtt.loop(nowMs);
+
+  // 8. M2: publish queued events to MQTT, throttled.
+  if (nowMs - lastMqttPublishMs >= MQTT_PUBLISH_INTERVAL_MS) {
+    lastMqttPublishMs = nowMs;
+    mqtt.publishQueuedEvents();
+    mqtt.publishHeartbeat(nowMs);
+  }
+
+  // 9. M2: persist the durable event queue to NVS when dirty, throttled.
+  if (nvsUsable && eventQueue.dirty() &&
+      nowMs - lastQueuePersistMs >= QUEUE_PERSIST_INTERVAL_MS) {
+    lastQueuePersistMs = nowMs;
+    uint8_t qbuf[PersistentQueue::MAX_SERIALIZED_SIZE];
+    const size_t n = eventQueue.serialize(qbuf, sizeof(qbuf));
+    if (n > 0 && store.save("evq", qbuf, n)) {
+      eventQueue.clean();
+    }
+  }
 }

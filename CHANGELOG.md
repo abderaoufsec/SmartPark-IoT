@@ -6,6 +6,25 @@ versions follow [Semantic Versioning](https://semver.org/) once releases start.
 
 ## [Unreleased]
 
+### Added — Milestone M2 (in progress: MQTT + offline event queue)
+
+- **MQTT client** (`src/mqtt_client.{hpp,cpp}`): PubSubClient wrapper with
+  non-blocking connect/reconnect (5 s backoff), JSON event envelope
+  (`{"t":"…","s":n,"v":n,"a":n,"q":n}`), retained heartbeat every 30 s, topic
+  contract `smartpark/{facility}/{device}/{events,heartbeat,commands}`.
+- **Persistent event queue** (`lib/smartpark_core/persistent_queue.{hpp,cpp}`):
+  wraps `EventQueue` with NVS serialization — events survive reboot, seq
+  numbers preserved, fail-closed decode (bad magic/version/truncation → queue
+  stays empty), dirty-tracking to avoid unnecessary flash writes.
+- **Wi-Fi manager** (`src/wifi_manager.{hpp,cpp}`): non-blocking connect with
+  exponential backoff; local operation fully independent of network (NFR-001).
+- **NVS multi-key support** (`src/nvs_store.hpp`): `load()`/`save()` now take
+  an explicit key (`"occ"` for occupancy, `"evq"` for event queue).
+- **`EventQueue::setNextSeq()` / `pushRaw()`**: preserve seq numbers when
+  restoring a persisted queue.
+- **7 new native tests**: persistent queue serialize round-trip, bad-magic/
+  bad-version/truncation rejection, dirty tracking, peek vs pop.
+
 ### Added — Milestone M1B (passage v2, persistence, obstruction guard, simulation)
 
 - **Two-point passage FSM v2** (`passage_detector`): confirms only an ordered

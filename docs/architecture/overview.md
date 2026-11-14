@@ -24,8 +24,8 @@ flowchart TD
 | Component | Milestone | Status |
 |---|---|---|
 | ESP32 edge controller (sensing, local safety, display) | M0 baseline → M1 rework | 🟡 M1B: modular firmware, 59 native tests, NVS occupancy persistence, Wokwi simulation project (`simulation/wokwi/`, lint green; 3/3 scenario runs green 2026-11-06); hardware unverified |
-| Persistent outbound event queue | M2 | ⬜ planned (in-memory dedup queue exists, M1A) |
-| Wi-Fi + MQTT transport (topics, IDs, heartbeat) | M2 | ⬜ planned |
+| Persistent outbound event queue | M1B (in-memory) → M2 (durable/NVS) | 🟡 M2: `PersistentQueue` wraps `EventQueue` with NVS serialization; events survive reboot; MQTT publisher drains the queue |
+| Wi-Fi + MQTT transport (topics, IDs, heartbeat) | M2 | 🟡 M2: PubSubClient client, non-blocking reconnect, JSON event publishing, retained heartbeat; Wi-Fi SSID not yet configured |
 | Mosquitto broker | M2 | ⬜ planned |
 | FastAPI backend + PostgreSQL | M3 | ⬜ planned |
 | SvelteKit dashboard | M4 | ⬜ planned |
@@ -138,6 +138,30 @@ sensing + safety run entirely on the ESP32 (ADR-002), events carry durable
 unique IDs (ADR-005), and "unknown" is a first-class state instead of assuming
 free capacity (ADR-006). See
 [`docs/decisions/0001-baseline.md`](../decisions/0001-baseline.md).
+
+### MQTT topic contract (M2)
+
+All topics share the prefix `smartpark/{facility_id}/{device_id}/` (IDs from
+`.env.example`: `SMARTPARK_FACILITY_ID`, `SMARTPARK_DEVICE_ID`).
+
+| Topic | Direction | QoS | Retained | Purpose |
+|---|---|---|---|---|
+| `smartpark/{fac}/{dev}/events` | ESP32 → broker | 1 | No | Durable occupancy/barrier/sensor events (JSON) |
+| `smartpark/{fac}/{dev}/heartbeat` | ESP32 → broker | 1 | Yes | Device liveness ("alive", re-published every 30 s) |
+| `smartpark/{fac}/{dev}/commands` | Broker → ESP32 | 1 | No | Operator commands (future M3+: reconcile, gate override) |
+
+Event JSON envelope:
+```json
+{"t":"ENTRY_APPROACH","s":0,"v":1,"a":12345,"q":7}
+```
+Fields: `t` = event type string, `s` = sensor ID, `v` = value, `a` = timestamp
+(millis), `q` = sequence number. Sequence numbers are per-boot unique
+(uint32); durable cross-boot event IDs `(device_id, event_id)` are assigned
+by the backend at ingest (M3).
+
+Event IDs and idempotency follow ADR-005: the backend deduplicates by
+`(device_id, event_id)`, so at-least-once MQTT delivery never creates
+duplicate logical events (NFR-003).
 
 ## Deployment variants
 

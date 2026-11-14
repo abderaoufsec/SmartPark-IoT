@@ -33,4 +33,22 @@ bool EventQueue::pop(ParkEvent& out) {
   return true;
 }
 
+bool EventQueue::pushRaw(const ParkEvent& e) {
+  // Duplicate suppression: identical to the most recent event.
+  if (count_ > 0) {
+    const ParkEvent& tail = buf_[(head_ + count_ - 1) % CAP];
+    if (tail.type == e.type && tail.sensorId == e.sensorId &&
+        tail.value == e.value) {
+      return false;
+    }
+  }
+  if (count_ == CAP) {
+    ++overflow_; // drop-newest, counted: never a silent loss
+    return false;
+  }
+  buf_[(head_ + count_) % CAP] = e;
+  ++count_;
+  return true;
+}
+
 } // namespace smartpark
